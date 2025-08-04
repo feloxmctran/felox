@@ -2,6 +2,9 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Logo from "../components/Logo";
 
+const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
+
+
 export default function LoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [message, setMessage] = useState("");
@@ -19,11 +22,13 @@ export default function LoginPage() {
       return;
     }
     try {
-      const res = await fetch("https://felox-backend.onrender.com/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+      const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
+const res = await fetch(`${apiUrl}/api/login`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(form),
+});
+
       const data = await res.json();
       if (data.success) {
         localStorage.setItem("felox_user", JSON.stringify(data.user));

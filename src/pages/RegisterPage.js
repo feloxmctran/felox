@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import Logo from "../components/Logo";
 
+const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
+
+
 export default function RegisterPage() {
   const [form, setForm] = useState({
     ad: "",
@@ -51,7 +54,7 @@ export default function RegisterPage() {
     };
 
     try {
-      const res = await fetch("http://localhost:5000/api/register", {
+      const res = await fetch("${apiUrl}/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(toSend),

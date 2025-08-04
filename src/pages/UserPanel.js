@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 
+const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
+
 const PERIODS = [
   { key: "today", label: "Bugün" },
   { key: "week", label: "Bu Hafta" },
@@ -61,7 +63,7 @@ export default function UserPanel() {
 
   // --- KULLANICININ DOĞRU CEVAPLADIĞI SORULARI AL ---
   useEffect(() => {
-    fetch(`http://localhost:5000/api/user/${user.id}/answers`)
+    fetch(`${apiUrl}/api/user/${user.id}/answers`)
       .then(res => res.json())
       .then(data => {
         if (data.success) {
@@ -72,11 +74,11 @@ export default function UserPanel() {
           );
         }
       });
-  }, [mode]);
+  }, [mode, user.id]);
 
   // Diğer state fetch'leri
   useEffect(() => {
-    fetch(`http://localhost:5000/api/user/${user.id}/total-points`)
+    fetch(`${apiUrl}/api/user/${user.id}/total-points`)
       .then(res => res.json())
       .then(data => {
         if (data.success) {
@@ -85,34 +87,34 @@ export default function UserPanel() {
         }
       });
 
-    fetch(`http://localhost:5000/api/user/${user.id}/answered`)
+    fetch(`${apiUrl}/api/user/${user.id}/answered`)
       .then((res) => res.json())
       .then((d) => d.success && setAnswered(d.answered));
 
     PERIODS.forEach(p => {
-      fetch(`http://localhost:5000/api/user/${user.id}/rank?period=${p.key}`)
+      fetch(`${apiUrl}/api/user/${user.id}/rank?period=${p.key}`)
         .then(res => res.json())
         .then(data => {
           setRankInfos(prev => ({ ...prev, [p.key]: data }));
         });
 
-      fetch(`http://localhost:5000/api/leaderboard?period=${p.key}`)
+      fetch(`${apiUrl}/api/leaderboard?period=${p.key}`)
         .then(res => res.json())
         .then(data => {
           setLeaderboards(prev => ({ ...prev, [p.key]: data.leaderboard }));
         });
     });
     // eslint-disable-next-line
-  }, [mode]);
+  }, [mode, user.id]);
 
   const fetchSurveys = () => {
-    fetch("http://localhost:5000/api/user/approved-surveys")
+    fetch(`${apiUrl}/api/user/approved-surveys`)
       .then((res) => res.json())
       .then((d) => d.success && setSurveys(d.surveys));
   };
 
   const fetchQuestions = (surveyId) => {
-    fetch(`http://localhost:5000/api/surveys/${surveyId}/questions`)
+    fetch(`${apiUrl}/api/surveys/${surveyId}/questions`)
       .then((res) => res.json())
       .then((d) => {
         if (d.success) {
@@ -127,12 +129,12 @@ export default function UserPanel() {
   };
 
   const startRandom = async () => {
-    const res = await fetch("http://localhost:5000/api/user/approved-surveys");
+    const res = await fetch(`${apiUrl}/api/user/approved-surveys`);
     const data = await res.json();
     let allQuestions = [];
     for (const survey of data.surveys) {
       const qRes = await fetch(
-        `http://localhost:5000/api/surveys/${survey.id}/questions`
+        `${apiUrl}/api/surveys/${survey.id}/questions`
       );
       const qData = await qRes.json();
       if (qData.success) {
@@ -181,7 +183,7 @@ export default function UserPanel() {
     setTimerActive(false);
     const q = questions[currentIdx];
     setInfo("");
-    fetch("http://localhost:5000/api/answers", {
+    fetch(`${apiUrl}/api/answers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
+
 export default function AdminPanel() {
   const navigate = useNavigate();
   const admin = JSON.parse(localStorage.getItem("felox_user"));
@@ -16,14 +18,14 @@ export default function AdminPanel() {
 
   // İstatistikleri çek
   const fetchStats = async () => {
-    const res = await fetch("http://localhost:5000/api/admin/statistics");
+    const res = await fetch(`${apiUrl}/api/admin/statistics`);
     const data = await res.json();
     if (data.success) setStats(data);
   };
 
   // Tüm anketleri çek
   const fetchSurveys = async () => {
-    const res = await fetch("http://localhost:5000/api/admin/surveys");
+    const res = await fetch(`${apiUrl}/api/admin/surveys`);
     const data = await res.json();
     if (data.success) setSurveys(data.surveys);
     else setSurveys([]);
@@ -33,7 +35,7 @@ export default function AdminPanel() {
 
   // Detaya gir, soruları çek
   const fetchSurveyDetails = async (surveyId) => {
-    const res = await fetch(`http://localhost:5000/api/surveys/${surveyId}/details`);
+    const res = await fetch(`${apiUrl}/api/surveys/${surveyId}/details`);
     const data = await res.json();
     if (data.success) {
       setSelectedSurvey(data.survey);
@@ -44,7 +46,7 @@ export default function AdminPanel() {
 
   // Onayla/Reddet
   const handleStatus = async (surveyId, status) => {
-    const res = await fetch(`http://localhost:5000/api/surveys/${surveyId}/status`, {
+    const res = await fetch(`${apiUrl}/api/surveys/${surveyId}/status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
@@ -61,7 +63,7 @@ export default function AdminPanel() {
   // Soru sil
   const handleDeleteQuestion = async (questionId) => {
     if (!window.confirm("Bu soruyu silmek istediğinize emin misiniz?")) return;
-    const res = await fetch(`http://localhost:5000/api/questions/${questionId}/delete`, {
+    const res = await fetch(`${apiUrl}/api/questions/${questionId}/delete`, {
       method: "POST"
     });
     const data = await res.json();

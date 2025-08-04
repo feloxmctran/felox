@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">felox</string>
+    <string name="title_activity_main">felox</string>
+    <string name="package_name">com.felox.app</string>
+    <string name="custom_url_scheme">com.felox.app</string>
+</resources>

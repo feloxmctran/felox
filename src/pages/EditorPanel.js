@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
+const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
+
+
 export default function EditorPanel() {
   const navigate = useNavigate();
   const editor = JSON.parse(localStorage.getItem("felox_user"));
@@ -51,7 +54,7 @@ export default function EditorPanel() {
       return;
     }
     try {
-      const res = await fetch("http://localhost:5000/api/surveys", {
+      const res = await fetch("${apiUrl}/api/surveys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -95,7 +98,7 @@ export default function EditorPanel() {
 
   // Anketleri çek
   const fetchSurveys = async () => {
-    const res = await fetch(`http://localhost:5000/api/editor/${editor.id}/surveys`);
+    const res = await fetch(`${apiUrl}/api/editor/${editor.id}/surveys`);
     const data = await res.json();
     if (data.success) setSurveys(data.surveys);
     else setSurveys([]);
@@ -107,7 +110,7 @@ export default function EditorPanel() {
 
   // Detayları çek
   const fetchSurveyDetails = async (surveyId) => {
-    const res = await fetch(`http://localhost:5000/api/surveys/${surveyId}/details`);
+    const res = await fetch(`${apiUrl}/api/surveys/${surveyId}/details`);
     const data = await res.json();
     if (data.success) {
       setSelectedSurvey(data.survey);
@@ -119,7 +122,7 @@ export default function EditorPanel() {
   // Soft delete (status = 'deleted')
   const handleDeleteSurvey = async (surveyId) => {
     if (!window.confirm("Bu anketi silmek istediğine emin misin?")) return;
-    const res = await fetch(`http://localhost:5000/api/surveys/${surveyId}/delete`, {
+    const res = await fetch(`${apiUrl}/api/surveys/${surveyId}/delete`, {
       method: "POST",
     });
     const data = await res.json();
@@ -132,7 +135,7 @@ export default function EditorPanel() {
 
   // RAPORU ÇEK
   const fetchSurveyReport = async (surveyId) => {
-    const res = await fetch(`http://localhost:5000/api/surveys/${surveyId}/answers-report`);
+    const res = await fetch(`${apiUrl}/api/surveys/${surveyId}/answers-report`);
     const data = await res.json();
     if (data.success) {
       setReport({
