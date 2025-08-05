@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Preferences } from '@capacitor/preferences";
+import { Preferences } from "@capacitor/preferences";
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 

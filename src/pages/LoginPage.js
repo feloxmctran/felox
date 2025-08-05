@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Logo from "../components/Logo";
-import { Preferences } from '@capacitor/preferences"; // EKLENDİ
+import { Preferences } from "@capacitor/preferences"; // EKLENDİ
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
