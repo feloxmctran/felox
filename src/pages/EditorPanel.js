@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { Storage } from "@capacitor/storage";
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
-
 export default function EditorPanel() {
   const navigate = useNavigate();
-  const editor = JSON.parse(localStorage.getItem("felox_user"));
+  const [editor, setEditor] = useState(null);
 
   // "panel", "create", "list", "detail", "report"
   const [mode, setMode] = useState("panel");
@@ -27,8 +27,22 @@ export default function EditorPanel() {
   // RAPOR STATE
   const [report, setReport] = useState(null);
 
-  const handleLogout = () => {
-    localStorage.removeItem("felox_user");
+  // Girişli editörü oku!
+  useEffect(() => {
+    const fetchEditor = async () => {
+      const { value } = await Storage.get({ key: "felox_user" });
+      if (value) {
+        setEditor(JSON.parse(value));
+      } else {
+        navigate("/login");
+      }
+    };
+    fetchEditor();
+    // eslint-disable-next-line
+  }, []);
+
+  const handleLogout = async () => {
+    await Storage.remove({ key: "felox_user" });
     navigate("/login");
   };
 
@@ -54,7 +68,7 @@ export default function EditorPanel() {
       return;
     }
     try {
-      const res = await fetch("${apiUrl}/api/surveys", {
+      const res = await fetch(`${apiUrl}/api/surveys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -98,15 +112,16 @@ export default function EditorPanel() {
 
   // Anketleri çek
   const fetchSurveys = async () => {
+    if (!editor) return;
     const res = await fetch(`${apiUrl}/api/editor/${editor.id}/surveys`);
     const data = await res.json();
     if (data.success) setSurveys(data.surveys);
     else setSurveys([]);
   };
   useEffect(() => {
-    if (mode === "list") fetchSurveys();
+    if (mode === "list" && editor) fetchSurveys();
     // eslint-disable-next-line
-  }, [mode]);
+  }, [mode, editor]);
 
   // Detayları çek
   const fetchSurveyDetails = async (surveyId) => {
@@ -148,6 +163,9 @@ export default function EditorPanel() {
   };
 
   // ------------------ RENDER ------------------
+
+  // Kullanıcı yüklenmediyse beklet
+  if (!editor) return <div>Yükleniyor...</div>;
 
   if (mode === "report" && report) {
     return (

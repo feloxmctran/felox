@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Storage } from "@capacitor/storage";
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
 export default function AdminPanel() {
   const navigate = useNavigate();
-  const admin = JSON.parse(localStorage.getItem("felox_user"));
+  const [admin, setAdmin] = useState(null); // Önceden localStorage idi, şimdi Storage'dan
 
   // İstatistikler için
   const [stats, setStats] = useState(null);
@@ -15,6 +16,16 @@ export default function AdminPanel() {
   const [mode, setMode] = useState("list"); // "list", "detail"
   const [selectedSurvey, setSelectedSurvey] = useState(null);
   const [surveyQuestions, setSurveyQuestions] = useState([]);
+
+  // İlk açılışta Storage'dan admini çek
+  useEffect(() => {
+    const fetchAdmin = async () => {
+      const { value } = await Storage.get({ key: "felox_user" });
+      if (value) setAdmin(JSON.parse(value));
+      else navigate("/login");
+    };
+    fetchAdmin();
+  }, [navigate]);
 
   // İstatistikleri çek
   const fetchStats = async () => {
@@ -75,10 +86,13 @@ export default function AdminPanel() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("felox_user");
+  const handleLogout = async () => {
+    await Storage.remove({ key: "felox_user" });
     navigate("/login");
   };
+
+  // Henüz admin yüklenmediyse ekrana boş dön
+  if (!admin) return <div className="text-center mt-10">Yükleniyor...</div>;
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-yellow-400 to-orange-700">

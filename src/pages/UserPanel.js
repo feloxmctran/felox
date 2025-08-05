@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Storage } from "@capacitor/storage";
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
@@ -7,10 +8,8 @@ const PERIODS = [
   { key: "week", label: "Bu Hafta" },
   { key: "month", label: "Bu Ay" },
   { key: "year", label: "Bu Yıl" },
-  //{ key: "all", label: "Tüm Zamanlar" },
 ];
 
-// ⭐️⭐️⭐️ Yıldız Animasyon Bileşeni
 const Stars = () => (
   <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
     {[...Array(10)].map((_, i) => (
@@ -44,7 +43,7 @@ const Stars = () => (
 );
 
 export default function UserPanel() {
-  const user = JSON.parse(localStorage.getItem("felox_user"));
+  const [user, setUser] = useState(null); // Capacitor Storage ile gelecek!
   const [totalPoints, setTotalPoints] = useState(0);
   const [answeredCount, setAnsweredCount] = useState(0);
   const [mode, setMode] = useState("panel");
@@ -61,8 +60,27 @@ export default function UserPanel() {
   const [leaderboards, setLeaderboards] = useState({});
   const [showLeaderboard, setShowLeaderboard] = useState(false);
 
-  // --- KULLANICININ DOĞRU CEVAPLADIĞI SORULARI AL ---
+  const [feedback, setFeedback] = useState("");
+  const [feedbackActive, setFeedbackActive] = useState(false);
+  const [showStars, setShowStars] = useState(false);
+
+  // Kullanıcıyı Capacitor Storage ile getir
   useEffect(() => {
+    const fetchUser = async () => {
+      const { value } = await Storage.get({ key: "felox_user" });
+      if (value) {
+        setUser(JSON.parse(value));
+      } else {
+        window.location.href = "/login";
+      }
+    };
+    fetchUser();
+  }, []);
+
+  // User yüklenmeden diğer fetch işlemleri yapılmasın!
+  useEffect(() => {
+    if (!user) return;
+
     fetch(`${apiUrl}/api/user/${user.id}/answers`)
       .then(res => res.json())
       .then(data => {
@@ -74,10 +92,7 @@ export default function UserPanel() {
           );
         }
       });
-  }, [mode, user.id]);
 
-  // Diğer state fetch'leri
-  useEffect(() => {
     fetch(`${apiUrl}/api/user/${user.id}/total-points`)
       .then(res => res.json())
       .then(data => {
@@ -105,7 +120,7 @@ export default function UserPanel() {
         });
     });
     // eslint-disable-next-line
-  }, [mode, user.id]);
+  }, [mode, user]);
 
   const fetchSurveys = () => {
     fetch(`${apiUrl}/api/user/approved-surveys`)
@@ -167,11 +182,6 @@ export default function UserPanel() {
     // eslint-disable-next-line
   }, [timeLeft, timerActive]);
 
-  const [feedback, setFeedback] = useState("");
-  const [feedbackActive, setFeedbackActive] = useState(false);
-  const [showStars, setShowStars] = useState(false);
-
-  // -- Geliştirilmiş Feedback (Puan göre mesaj ve yıldız) --
   const getSuccessMsg = (puan) => {
     if (puan <= 3) return "TEBRİKLER";
     if (puan <= 6) return "HARİKASIN";
@@ -204,7 +214,7 @@ export default function UserPanel() {
           }
           else msg = "BİLEMEDİN";
           setFeedback(msg);
-          setShowStars(stars && d.is_correct === 1); // Sadece doğru cevapta yıldız
+          setShowStars(stars && d.is_correct === 1);
           setFeedbackActive(true);
 
           setTimeout(() => {
@@ -226,12 +236,16 @@ export default function UserPanel() {
       .catch((e) => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("felox_user");
+  // Çıkış fonksiyonunu Capacitor Storage ile yap!
+  const handleLogout = async () => {
+    await Storage.remove({ key: "felox_user" });
     window.location.href = "/login";
   };
 
-  // --------------- PANEL EKRANI ---------------
+  // user yüklenmiyorsa "Yükleniyor..." göster
+  if (!user) return <div>Yükleniyor...</div>;
+
+  // ------- PANEL EKRANI ---------
   if (mode === "panel") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600">
@@ -250,7 +264,7 @@ export default function UserPanel() {
               Çözülen Soru: <b>{answeredCount}</b>
             </span>
           </div>
-          {/* Butonlar: önce Hemen Başla, sonra Kategori Seç */}
+          {/* Butonlar */}
           <div className="flex flex-col gap-3 mt-2 mb-4">
             <button
               className="py-2 px-6 rounded-xl font-bold bg-emerald-600 text-white hover:bg-emerald-800"
@@ -296,7 +310,7 @@ export default function UserPanel() {
               })}
             </div>
           </div>
-          {/* PUAN TABLOSU MODALI BURADA! */}
+          {/* PUAN TABLOSU MODALI */}
           {showLeaderboard && (
             <div className="fixed inset-0 bg-black/40 z-30 flex items-center justify-center">
               <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto relative">
@@ -359,7 +373,7 @@ export default function UserPanel() {
               </div>
             </div>
           )}
-          {/* Puan tablosu ve çıkış butonu EN ALTA */}
+          {/* Puan tablosu ve çıkış butonu */}
           <div className="flex flex-row justify-center gap-4 mt-6">
             <button
               className="px-4 py-2 bg-cyan-600 text-white rounded-xl hover:bg-cyan-800 font-bold"

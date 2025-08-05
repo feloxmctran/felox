@@ -50,7 +50,7 @@ export default function RegisterPage() {
       sehir: form.sehir,
       email: form.email,
       password: form.sifre,
-      role: "user"
+      role: "USER"
     };
 
     try {

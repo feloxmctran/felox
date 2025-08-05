@@ -5,14 +5,7 @@ import RegisterPage from "./pages/RegisterPage";
 import AdminPanel from "./pages/AdminPanel";
 import EditorPanel from "./pages/EditorPanel";
 import UserPanel from "./pages/UserPanel";
-
-// Rol bazlı koruma için bir bileşen
-function ProtectedRoute({ allowedRoles, children }) {
-  const user = JSON.parse(localStorage.getItem("felox_user"));
-  if (!user) return <Navigate to="/login" />;
-  if (!allowedRoles.includes(user.role.toUpperCase())) return <Navigate to="/login" />;
-  return children;
-}
+import ProtectedRoute from "./ProtectedRoute"; // Bunu ekledik
 
 export default function App() {
   return (

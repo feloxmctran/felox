@@ -1,14 +1,28 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Logo from "../components/Logo";
+import { Storage } from "@capacitor/storage"; // EKLENDİ
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
-
 
 export default function LoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [message, setMessage] = useState("");
   const navigate = useNavigate();
+
+  // Uygulama açılır açılmaz kullanıcıyı kontrol et!
+  useEffect(() => {
+    const checkUser = async () => {
+      const { value } = await Storage.get({ key: "felox_user" });
+      if (value) {
+        const user = JSON.parse(value);
+        if (user.role === "USER") navigate("/user");
+        else if (user.role === "EDITOR") navigate("/editor");
+        else if (user.role === "ADMIN") navigate("/admin");
+      }
+    };
+    checkUser();
+  }, [navigate]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -22,16 +36,19 @@ export default function LoginPage() {
       return;
     }
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
-const res = await fetch(`${apiUrl}/api/login`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(form),
-});
+      const res = await fetch(`${apiUrl}/api/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
 
       const data = await res.json();
       if (data.success) {
-        localStorage.setItem("felox_user", JSON.stringify(data.user));
+        // localStorage yerine Capacitor Storage ile sakla
+        await Storage.set({
+          key: "felox_user",
+          value: JSON.stringify(data.user),
+        });
         // Rolüne göre yönlendir
         if (data.user.role === "USER") {
           navigate("/user");
