@@ -6,7 +6,7 @@
     "@capacitor/android": "^7.4.2",
     "@capacitor/cli": "^7.4.2",
     "@capacitor/core": "^7.4.2",
-    "@capacitor/storage": "^1.2.5",
+    "@capacitor/preferences": "^7.0.1",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",

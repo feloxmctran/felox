@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Storage } from "@capacitor/storage";
+import { Preferences } from '@capacitor/preferences";
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
