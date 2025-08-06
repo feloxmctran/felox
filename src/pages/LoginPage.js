@@ -1,27 +1,59 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Logo from "../components/Logo";
-import { Preferences } from "@capacitor/preferences"; // EKLENDİ
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
+
+// Web/Mobil universal getter
+async function getFeloxUser() {
+  let userStr = localStorage.getItem("felox_user");
+  // Eğer mobil platformdaysa Preferences'tan oku
+  if (
+    (!userStr) &&
+    window.Capacitor &&
+    (window.Capacitor.isNative || window.Capacitor.isNativePlatform?.())
+  ) {
+    try {
+      const { Preferences } = await import("@capacitor/preferences");
+      const { value } = await Preferences.get({ key: "felox_user" });
+      userStr = value;
+    } catch {}
+  }
+  return userStr ? JSON.parse(userStr) : null;
+}
+
+// Universal setter (web + mobil)
+async function setFeloxUser(user) {
+  localStorage.setItem("felox_user", JSON.stringify(user));
+  if (
+    window.Capacitor &&
+    (window.Capacitor.isNative || window.Capacitor.isNativePlatform?.())
+  ) {
+    try {
+      const { Preferences } = await import("@capacitor/preferences");
+      await Preferences.set({
+        key: "felox_user",
+        value: JSON.stringify(user),
+      });
+    } catch {}
+  }
+}
 
 export default function LoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [message, setMessage] = useState("");
   const navigate = useNavigate();
 
-  // Uygulama açılır açılmaz kullanıcıyı kontrol et!
+  // Otomatik yönlendir
   useEffect(() => {
-    const checkUser = async () => {
-      const { value } = await Storage.get({ key: "felox_user" });
-      if (value) {
-        const user = JSON.parse(value);
-        if (user.role === "USER") navigate("/user");
-        else if (user.role === "EDITOR") navigate("/editor");
-        else if (user.role === "ADMIN") navigate("/admin");
+    getFeloxUser().then((user) => {
+      if (user && user.role) {
+        const role = user.role.toUpperCase();
+        if (role === "USER") navigate("/user");
+        else if (role === "EDITOR") navigate("/editor");
+        else if (role === "ADMIN") navigate("/admin");
       }
-    };
-    checkUser();
+    });
   }, [navigate]);
 
   const handleChange = (e) => {
@@ -44,21 +76,12 @@ export default function LoginPage() {
 
       const data = await res.json();
       if (data.success) {
-        // localStorage yerine Capacitor Storage ile sakla
-        await Storage.set({
-          key: "felox_user",
-          value: JSON.stringify(data.user),
-        });
-        // Rolüne göre yönlendir
-        if (data.user.role === "USER") {
-          navigate("/user");
-        } else if (data.user.role === "EDITOR") {
-          navigate("/editor");
-        } else if (data.user.role === "ADMIN") {
-          navigate("/admin");
-        } else {
-          setMessage("Bilinmeyen rol!");
-        }
+        await setFeloxUser(data.user);
+        const role = data.user.role?.toUpperCase();
+        if (role === "USER") navigate("/user");
+        else if (role === "EDITOR") navigate("/editor");
+        else if (role === "ADMIN") navigate("/admin");
+        else setMessage("Bilinmeyen rol!");
       } else {
         setMessage(data.error || "Giriş başarısız.");
       }

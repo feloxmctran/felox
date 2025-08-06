@@ -1,8 +1,39 @@
+// src/pages/EditorPanel.js
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Preferences } from "@capacitor/preferences";
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
+
+// Universal storage getter
+async function getFeloxUser() {
+  let userStr = localStorage.getItem("felox_user");
+  if (
+    !userStr &&
+    window.Capacitor &&
+    (window.Capacitor.isNative || window.Capacitor.isNativePlatform?.())
+  ) {
+    try {
+      const { Preferences } = await import("@capacitor/preferences");
+      const { value } = await Preferences.get({ key: "felox_user" });
+      userStr = value;
+    } catch {}
+  }
+  return userStr ? JSON.parse(userStr) : null;
+}
+
+// Universal storage remover
+async function removeFeloxUser() {
+  localStorage.removeItem("felox_user");
+  if (
+    window.Capacitor &&
+    (window.Capacitor.isNative || window.Capacitor.isNativePlatform?.())
+  ) {
+    try {
+      const { Preferences } = await import("@capacitor/preferences");
+      await Preferences.remove({ key: "felox_user" });
+    } catch {}
+  }
+}
 
 export default function EditorPanel() {
   const navigate = useNavigate();
@@ -29,20 +60,15 @@ export default function EditorPanel() {
 
   // Girişli editörü oku!
   useEffect(() => {
-    const fetchEditor = async () => {
-      const { value } = await Storage.get({ key: "felox_user" });
-      if (value) {
-        setEditor(JSON.parse(value));
-      } else {
-        navigate("/login");
-      }
-    };
-    fetchEditor();
+    getFeloxUser().then((u) => {
+      if (u) setEditor(u);
+      else navigate("/login");
+    });
     // eslint-disable-next-line
   }, []);
 
   const handleLogout = async () => {
-    await Storage.remove({ key: "felox_user" });
+    await removeFeloxUser();
     navigate("/login");
   };
 

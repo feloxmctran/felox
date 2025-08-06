@@ -1,12 +1,42 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Preferences } from "@capacitor/preferences";
+
+// Universal Storage getter
+async function getFeloxUser() {
+  let userStr = localStorage.getItem("felox_user");
+  if (
+    !userStr &&
+    window.Capacitor &&
+    (window.Capacitor.isNative || window.Capacitor.isNativePlatform?.())
+  ) {
+    try {
+      const { Preferences } = await import("@capacitor/preferences");
+      const { value } = await Preferences.get({ key: "felox_user" });
+      userStr = value;
+    } catch {}
+  }
+  return userStr ? JSON.parse(userStr) : null;
+}
+
+// Universal Storage remover (logout)
+async function removeFeloxUser() {
+  localStorage.removeItem("felox_user");
+  if (
+    window.Capacitor &&
+    (window.Capacitor.isNative || window.Capacitor.isNativePlatform?.())
+  ) {
+    try {
+      const { Preferences } = await import("@capacitor/preferences");
+      await Preferences.remove({ key: "felox_user" });
+    } catch {}
+  }
+}
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
 export default function AdminPanel() {
   const navigate = useNavigate();
-  const [admin, setAdmin] = useState(null); // Önceden localStorage idi, şimdi Storage'dan
+  const [admin, setAdmin] = useState(null);
 
   // İstatistikler için
   const [stats, setStats] = useState(null);
@@ -17,14 +47,12 @@ export default function AdminPanel() {
   const [selectedSurvey, setSelectedSurvey] = useState(null);
   const [surveyQuestions, setSurveyQuestions] = useState([]);
 
-  // İlk açılışta Storage'dan admini çek
+  // İlk açılışta universal storage'dan admini çek
   useEffect(() => {
-    const fetchAdmin = async () => {
-      const { value } = await Storage.get({ key: "felox_user" });
-      if (value) setAdmin(JSON.parse(value));
+    getFeloxUser().then((user) => {
+      if (user) setAdmin(user);
       else navigate("/login");
-    };
-    fetchAdmin();
+    });
   }, [navigate]);
 
   // İstatistikleri çek
@@ -87,7 +115,7 @@ export default function AdminPanel() {
   };
 
   const handleLogout = async () => {
-    await Storage.remove({ key: "felox_user" });
+    await removeFeloxUser();
     navigate("/login");
   };
 

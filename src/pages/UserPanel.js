@@ -1,5 +1,36 @@
+// src/pages/UserPanel.js
 import React, { useState, useEffect } from "react";
-import { Preferences } from "@capacitor/preferences";
+
+// Universal kullanıcı getter (hem web, hem mobil)
+async function getFeloxUser() {
+  let userStr = localStorage.getItem("felox_user");
+  if (
+    !userStr &&
+    window.Capacitor &&
+    (window.Capacitor.isNative || window.Capacitor.isNativePlatform?.())
+  ) {
+    try {
+      const { Preferences } = await import("@capacitor/preferences");
+      const { value } = await Preferences.get({ key: "felox_user" });
+      userStr = value;
+    } catch {}
+  }
+  return userStr ? JSON.parse(userStr) : null;
+}
+
+// Universal kullanıcı silici
+async function removeFeloxUser() {
+  localStorage.removeItem("felox_user");
+  if (
+    window.Capacitor &&
+    (window.Capacitor.isNative || window.Capacitor.isNativePlatform?.())
+  ) {
+    try {
+      const { Preferences } = await import("@capacitor/preferences");
+      await Preferences.remove({ key: "felox_user" });
+    } catch {}
+  }
+}
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
@@ -43,7 +74,7 @@ const Stars = () => (
 );
 
 export default function UserPanel() {
-  const [user, setUser] = useState(null); // Capacitor Storage ile gelecek!
+  const [user, setUser] = useState(null);
   const [totalPoints, setTotalPoints] = useState(0);
   const [answeredCount, setAnsweredCount] = useState(0);
   const [mode, setMode] = useState("panel");
@@ -64,20 +95,15 @@ export default function UserPanel() {
   const [feedbackActive, setFeedbackActive] = useState(false);
   const [showStars, setShowStars] = useState(false);
 
-  // Kullanıcıyı Capacitor Storage ile getir
+  // Universal olarak kullanıcıyı getir
   useEffect(() => {
-    const fetchUser = async () => {
-      const { value } = await Storage.get({ key: "felox_user" });
-      if (value) {
-        setUser(JSON.parse(value));
-      } else {
-        window.location.href = "/login";
-      }
-    };
-    fetchUser();
+    getFeloxUser().then((u) => {
+      if (u) setUser(u);
+      else window.location.href = "/login";
+    });
   }, []);
 
-  // User yüklenmeden diğer fetch işlemleri yapılmasın!
+  // user geldikten sonra diğer dataları çek
   useEffect(() => {
     if (!user) return;
 
@@ -236,16 +262,15 @@ export default function UserPanel() {
       .catch((e) => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
   };
 
-  // Çıkış fonksiyonunu Capacitor Storage ile yap!
+  // Çıkış fonksiyonu universal!
   const handleLogout = async () => {
-    await Storage.remove({ key: "felox_user" });
+    await removeFeloxUser();
     window.location.href = "/login";
   };
 
-  // user yüklenmiyorsa "Yükleniyor..." göster
   if (!user) return <div>Yükleniyor...</div>;
 
-  // ------- PANEL EKRANI ---------
+  // PANEL EKRANI
   if (mode === "panel") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600">
@@ -522,7 +547,7 @@ export default function UserPanel() {
     );
   }
 
-  // --- Çözülecek soru kalmadı ekranı ---
+  // Çözülecek soru kalmadı ekranı
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600">
       <div className="bg-white/90 rounded-2xl shadow-xl p-8 w-full max-w-md text-center">

@@ -1,8 +1,25 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Logo from "../components/Logo";
 
-const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
+// Platform tespiti (web/mobil)
+function isNative() {
+  return !!(window.Capacitor && (window.Capacitor.isNative || window.Capacitor.isNativePlatform?.()));
+}
+async function setFeloxUser(user) {
+  localStorage.setItem("felox_user", JSON.stringify(user));
+  if (isNative()) {
+    try {
+      const { Preferences } = await import("@capacitor/preferences");
+      await Preferences.set({
+        key: "felox_user",
+        value: JSON.stringify(user),
+      });
+    } catch (e) {}
+  }
+}
 
+const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
@@ -16,6 +33,7 @@ export default function RegisterPage() {
     sifre: ""
   });
   const [message, setMessage] = useState("");
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -25,7 +43,7 @@ export default function RegisterPage() {
     e.preventDefault();
     setMessage("");
 
-    // Basit doğrulama (rol kaldırıldı)
+    // Basit doğrulama
     if (
       !form.ad ||
       !form.soyad ||
@@ -40,7 +58,6 @@ export default function RegisterPage() {
       return;
     }
 
-    // Backend'in beklediği şekilde alanlar (rol daima user)
     const toSend = {
       ad: form.ad,
       soyad: form.soyad,
@@ -54,13 +71,44 @@ export default function RegisterPage() {
     };
 
     try {
+      // 1) Register isteği
       const res = await fetch(`${apiUrl}/api/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(toSend),
       });
       const data = await res.json();
-      if (data.success) {
+
+      if (data.success && data.user) {
+        // 2) Kayıt başarılıysa, otomatik login
+        const loginRes = await fetch(`${apiUrl}/api/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: form.email,
+            password: form.sifre,
+          }),
+        });
+        const loginData = await loginRes.json();
+
+        if (loginData.success && loginData.user) {
+          await setFeloxUser(loginData.user);
+          // role yönlendirme
+          if (loginData.user.role && loginData.user.role.toUpperCase() === "USER") {
+            navigate("/user");
+          } else if (loginData.user.role && loginData.user.role.toUpperCase() === "EDITOR") {
+            navigate("/editor");
+          } else if (loginData.user.role && loginData.user.role.toUpperCase() === "ADMIN") {
+            navigate("/admin");
+          } else {
+            setMessage("Kayıt başarılı, ancak rol tanımsız!");
+          }
+        } else {
+          setMessage("Kayıt başarılı ama girişte hata: " + (loginData.error || ""));
+        }
+      } else if (data.error) {
+        setMessage(data.error || "Kayıt sırasında bir hata oluştu.");
+      } else {
         setMessage("Kayıt başarılı! Şimdi giriş yapabilirsiniz.");
         setForm({
           ad: "",
@@ -72,8 +120,6 @@ export default function RegisterPage() {
           email: "",
           sifre: ""
         });
-      } else {
-        setMessage(data.error || "Kayıt sırasında bir hata oluştu.");
       }
     } catch (err) {
       setMessage("Sunucuya bağlanılamıyor.");
