@@ -84,7 +84,7 @@ export default function UserPanel() {
   const [correctAnswered, setCorrectAnswered] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [info, setInfo] = useState("");
-  const [timeLeft, setTimeLeft] = useState(10);
+  const [timeLeft, setTimeLeft] = useState(24);
   const [timerActive, setTimerActive] = useState(false);
 
   const [rankInfos, setRankInfos] = useState({});
@@ -191,7 +191,7 @@ export default function UserPanel() {
 
   useEffect(() => {
     if (mode === "solve" && questions.length > 0) {
-      setTimeLeft(10);
+      setTimeLeft(24);
       setTimerActive(true);
     }
   }, [currentIdx, mode, questions]);
