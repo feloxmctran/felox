@@ -312,16 +312,17 @@ export default function EditorPanel() {
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
               >
+                <option value="">Kategori Seç</option>
                 <option value="Genel Kültür">Genel Kültür</option>
                 <option value="Tarih">Tarih</option>
-                <option value="coğrafya">Coğrafya</option>
+                <option value="Coğrafya">Coğrafya</option>
                 <option value="Edebiyat">Edebiyat</option>
                 <option value="Spor">Spor</option>
                 <option value="Müzik">Müzik</option>
                 <option value="Sinema">Sinema</option>
                 <option value="İleri(9-10 puan)">İleri(9-10 puan)</option>
                 <option value="Orta(6-8 puan)">Orta(6-8 puan)</option>
-                <option value="Temel(1-5puan)">Temel(1-5puan)</option>
+                <option value="Temel(1-5 puan)">Temel(1-5 puan)</option>
                 <option value="Özel">Özel</option>
 
               </select>
