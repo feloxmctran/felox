@@ -312,17 +312,18 @@ export default function EditorPanel() {
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
               >
-                <option value="">Kategori Seçin</option>
-                <option value="Genel">Genel</option>
-                <option value="Sağlık">Sağlık</option>
-                <option value="Teknoloji">Teknoloji</option>
+                <option value="Genel Kültür">Genel Kültür</option>
                 <option value="Tarih">Tarih</option>
                 <option value="coğrafya">Coğrafya</option>
-                <option value="Matematik">Matematik</option>
-                <option value="Futbol">Futbol</option>
-                <option value="Basketbol">Basketbol</option>
+                <option value="Edebiyat">Edebiyat</option>
                 <option value="Spor">Spor</option>
-                <option value="Türkçe Müzik">Türkçe Müzik</option>
+                <option value="Müzik">Müzik</option>
+                <option value="Sinema">Sinema</option>
+                <option value="İleri(9-10 puan)">İleri(9-10 puan)</option>
+                <option value="Orta(6-8 puan)">Orta(6-8 puan)</option>
+                <option value="Temel(1-5puan)">Temel(1-5puan)</option>
+                <option value="Özel">Özel</option>
+
               </select>
 
               <div className="text-left mt-2 font-semibold text-blue-700">Sorular</div>
