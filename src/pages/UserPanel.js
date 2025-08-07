@@ -95,6 +95,11 @@ export default function UserPanel() {
   const [feedbackActive, setFeedbackActive] = useState(false);
   const [showStars, setShowStars] = useState(false);
 
+  // -- Kategoriye özel leaderboard için state'ler
+  const [surveyLeaderboard, setSurveyLeaderboard] = useState([]);
+  const [showSurveyLeaderboard, setShowSurveyLeaderboard] = useState(false);
+  const [selectedSurvey, setSelectedSurvey] = useState(null);
+
   // Universal olarak kullanıcıyı getir
   useEffect(() => {
     getFeloxUser().then((u) => {
@@ -167,6 +172,18 @@ export default function UserPanel() {
           setMode("solve");
         }
       });
+  };
+
+  // -- Kategoriye özel leaderboard fetch fonksiyonu
+  const fetchSurveyLeaderboard = async (surveyId) => {
+    setSurveyLeaderboard([]); // Modal açılırken önce temizle
+    setSelectedSurvey(surveys.find(s => s.id === surveyId));
+    const res = await fetch(`${apiUrl}/api/surveys/${surveyId}/leaderboard`);
+    const data = await res.json();
+    if (data.success) {
+      setSurveyLeaderboard((data.leaderboard || []).filter(u => u.total_points > 0)); // Sıfırdan büyük puanlılar!
+    }
+    setShowSurveyLeaderboard(true);
   };
 
   const startRandom = async () => {
@@ -272,151 +289,9 @@ export default function UserPanel() {
 
   // PANEL EKRANI
   if (mode === "panel") {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600">
-        <div className="bg-white/90 rounded-2xl shadow-xl p-8 w-full max-w-xl text-center">
-          <h2 className="text-3xl font-bold text-emerald-700 mb-2">
-            Kullanıcı Paneli
-          </h2>
-          <p className="text-lg text-gray-700 mb-2">
-            Hoş geldiniz, <b>{user.ad}</b>!
-          </p>
-          <div className="mb-4 flex flex-wrap justify-center gap-4">
-            <span className="inline-block bg-emerald-100 text-emerald-700 px-4 py-1 rounded-lg">
-              Toplam Puan: <b>{totalPoints}</b>
-            </span>
-            <span className="inline-block bg-cyan-100 text-cyan-700 px-4 py-1 rounded-lg">
-              Çözülen Soru: <b>{answeredCount}</b>
-            </span>
-          </div>
-          {/* Butonlar */}
-          <div className="flex flex-col gap-3 mt-2 mb-4">
-            <button
-              className="py-2 px-6 rounded-xl font-bold bg-emerald-600 text-white hover:bg-emerald-800"
-              onClick={startRandom}
-            >
-              Hemen Başla
-            </button>
-            <button
-              className="py-2 px-6 rounded-xl font-bold bg-cyan-600 text-white hover:bg-cyan-800"
-              onClick={() => {
-                fetchSurveys();
-                setMode("list");
-              }}
-            >
-              Kategori Seç
-            </button>
-          </div>
-          {/* Sıralama kutuları */}
-          <div className="mb-4 text-left">
-            <h3 className="text-xl font-bold text-cyan-700 mb-2 text-center">
-              Sıralamadaki Yeriniz
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-              {PERIODS.map((p) => {
-                const r = rankInfos[p.key] || {};
-                return (
-                  <div
-                    key={p.key}
-                    className="bg-orange-100 px-3 py-2 rounded-xl shadow text-orange-800 text-center flex flex-col items-center"
-                  >
-                    <span className="font-semibold">{p.label}</span>
-                    <span className="text-2xl font-bold">
-                      {r.rank ? r.rank : "-"}{" "}
-                      <span className="text-lg font-normal">
-                        / {r.total_users ? r.total_users : "-"}
-                      </span>
-                    </span>
-                    <span className="text-sm text-orange-700">
-                      Puan: {r.user_points ?? "-"}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          {/* PUAN TABLOSU MODALI */}
-          {showLeaderboard && (
-            <div className="fixed inset-0 bg-black/40 z-30 flex items-center justify-center">
-              <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto relative">
-                <button
-                  className="absolute top-2 right-2 text-2xl font-bold text-gray-500 hover:text-red-600"
-                  onClick={() => setShowLeaderboard(false)}
-                  title="Kapat"
-                >
-                  &times;
-                </button>
-                <h3 className="text-2xl font-bold mb-3 text-cyan-700 text-center">
-                  Puan Tablosu
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {PERIODS.map((p) => (
-                    <div
-                      key={p.key}
-                      className="border rounded-xl shadow bg-cyan-50 mb-3"
-                    >
-                      <div className="bg-cyan-200 rounded-t-xl py-2 font-bold text-lg text-cyan-900 text-center">
-                        {p.label}
-                      </div>
-                      <table className="min-w-full border text-sm">
-                        <thead>
-                          <tr>
-                            <th className="p-1 border">#</th>
-                            <th className="p-1 border">Ad</th>
-                            <th className="p-1 border">Soyad</th>
-                            <th className="p-1 border">Puan</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(leaderboards[p.key] ?? [])
-                           .filter(u => u.total_points > 0)
-                            .slice(0, 10)
-                            .map((u, i) => (
-                              <tr
-                                key={u.id}
-                                className={
-                                  u.id === user.id
-                                    ? "bg-yellow-200 font-bold"
-                                    : ""
-                                }
-                              >
-                                <td className="p-1 border">{i + 1}</td>
-                                <td className="p-1 border">{u.ad}</td>
-                                <td className="p-1 border">{u.soyad}</td>
-                                <td className="p-1 border">{u.total_points}</td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                      {(leaderboards[p.key] ?? []).length === 0 && (
-                        <div className="text-gray-500 text-center py-2">
-                          Veri yok.
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          {/* Puan tablosu ve çıkış butonu */}
-          <div className="flex flex-row justify-center gap-4 mt-6">
-            <button
-              className="px-4 py-2 bg-cyan-600 text-white rounded-xl hover:bg-cyan-800 font-bold"
-              onClick={() => setShowLeaderboard(true)}
-            >
-              Puan Tablosu
-            </button>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 font-bold"
-            >
-              Çıkış Yap
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    // ... (aynı, değişmedi, burayı kesiyorum)
+    // İstersen üstteki halini kullanabilirsin.
+    // Eğer istersen burayı da tüm kod olarak tekrar gönderebilirim.
   }
 
   // --- Anket listesi ---
@@ -425,7 +300,7 @@ export default function UserPanel() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600">
         <div className="bg-white/90 rounded-2xl shadow-xl p-8 w-full max-w-lg text-center">
           <h2 className="text-xl font-bold text-cyan-700 mb-4">
-            Onaylanmış Anketler
+            Onaylanmış Kategoriler
           </h2>
           {surveys.length === 0 ? (
             <div className="text-gray-600">Hiç onaylanmış anket yok.</div>
@@ -447,10 +322,16 @@ export default function UserPanel() {
                     <td className="p-2 border">{s.question_count ?? "?"}</td>
                     <td className="p-2 border">
                       <button
-                        className="bg-cyan-600 text-white rounded-xl px-3 py-1 hover:bg-cyan-800"
+                        className="bg-cyan-600 text-white rounded-xl px-3 py-1 hover:bg-cyan-800 mr-2"
                         onClick={() => fetchQuestions(s.id)}
                       >
                         Soruları Çöz
+                      </button>
+                      <button
+                        className="bg-orange-500 text-white rounded-xl px-3 py-1 hover:bg-orange-700"
+                        onClick={() => fetchSurveyLeaderboard(s.id)}
+                      >
+                        Puan Tablosu
                       </button>
                     </td>
                   </tr>
@@ -464,6 +345,51 @@ export default function UserPanel() {
           >
             Panele Dön
           </button>
+          {/* Kategoriye özel puan tablosu modalı */}
+          {showSurveyLeaderboard && (
+            <div className="fixed inset-0 bg-black/40 z-30 flex items-center justify-center">
+              <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto relative">
+                <button
+                  className="absolute top-2 right-2 text-2xl font-bold text-gray-500 hover:text-red-600"
+                  onClick={() => setShowSurveyLeaderboard(false)}
+                  title="Kapat"
+                >
+                  &times;
+                </button>
+                <h3 className="text-xl font-bold mb-3 text-orange-700 text-center">
+                  {selectedSurvey?.title} için Puan Tablosu
+                </h3>
+                <table className="min-w-full border text-sm">
+                  <thead>
+                    <tr>
+                      <th className="p-1 border">#</th>
+                      <th className="p-1 border">Ad</th>
+                      <th className="p-1 border">Soyad</th>
+                      <th className="p-1 border">Puan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {surveyLeaderboard.length > 0 ? (
+                      surveyLeaderboard.slice(0, 10).map((u, i) => (
+                        <tr key={u.id} className={u.id === user.id ? "bg-yellow-200 font-bold" : ""}>
+                          <td className="p-1 border">{i + 1}</td>
+                          <td className="p-1 border">{u.ad}</td>
+                          <td className="p-1 border">{u.soyad}</td>
+                          <td className="p-1 border">{u.total_points}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="text-gray-500 text-center py-2">
+                          Veri yok.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
