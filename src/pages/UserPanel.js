@@ -1,7 +1,6 @@
-// src/pages/UserPanel.js
 import React, { useState, useEffect } from "react";
 
-// Universal kullanıcı getter (hem web, hem mobil)
+// Universal kullanıcı getter (web + mobil)
 async function getFeloxUser() {
   let userStr = localStorage.getItem("felox_user");
   if (
@@ -95,7 +94,7 @@ export default function UserPanel() {
   const [feedbackActive, setFeedbackActive] = useState(false);
   const [showStars, setShowStars] = useState(false);
 
-  // -- Kategoriye özel leaderboard için state'ler
+  // Kategoriye özel leaderboard
   const [surveyLeaderboard, setSurveyLeaderboard] = useState([]);
   const [showSurveyLeaderboard, setShowSurveyLeaderboard] = useState(false);
   const [selectedSurvey, setSelectedSurvey] = useState(null);
@@ -108,7 +107,7 @@ export default function UserPanel() {
     });
   }, []);
 
-  // user geldikten sonra diğer dataları çek
+  // Kullanıcı gelince: doğru cevaplar, puan, cevaplananlar, sıralama ve leaderboardları çek
   useEffect(() => {
     if (!user) return;
 
@@ -118,7 +117,7 @@ export default function UserPanel() {
         if (data.success) {
           setCorrectAnswered(
             data.answers
-              .filter(ans => ans.is_correct == 1)
+              .filter(ans => ans.is_correct === 1 || ans.is_correct === "1") // int veya string
               .map(ans => ans.question_id)
           );
         }
@@ -150,20 +149,28 @@ export default function UserPanel() {
           setLeaderboards(prev => ({ ...prev, [p.key]: data.leaderboard }));
         });
     });
-    // eslint-disable-next-line
   }, [mode, user]);
 
+  // Sadece sorusu olan anketleri getir!
   const fetchSurveys = () => {
     fetch(`${apiUrl}/api/user/approved-surveys`)
       .then((res) => res.json())
-      .then((d) => d.success && setSurveys(d.surveys));
+      .then((d) => {
+        if (d.success) {
+          setSurveys(
+            d.surveys.filter(s => (s.question_count ?? 0) > 0)
+          );
+        }
+      });
   };
 
+  // Sadece çözülmemiş soruları getir
   const fetchQuestions = (surveyId) => {
     fetch(`${apiUrl}/api/surveys/${surveyId}/questions`)
       .then((res) => res.json())
       .then((d) => {
         if (d.success) {
+          // SADECE DAHA ÖNCE DOĞRU CEVAPLANMAMIŞ soruları getir
           const filtered = d.questions.filter(
             (q) => !correctAnswered.includes(q.id)
           );
@@ -174,23 +181,24 @@ export default function UserPanel() {
       });
   };
 
-  // -- Kategoriye özel leaderboard fetch fonksiyonu
+  // Kategoriye özel leaderboard fetch
   const fetchSurveyLeaderboard = async (surveyId) => {
-    setSurveyLeaderboard([]); // Modal açılırken önce temizle
+    setSurveyLeaderboard([]);
     setSelectedSurvey(surveys.find(s => s.id === surveyId));
     const res = await fetch(`${apiUrl}/api/surveys/${surveyId}/leaderboard`);
     const data = await res.json();
     if (data.success) {
-      setSurveyLeaderboard((data.leaderboard || []).filter(u => u.total_points > 0)); // Sıfırdan büyük puanlılar!
+      setSurveyLeaderboard((data.leaderboard || []).filter(u => u.total_points > 0));
     }
     setShowSurveyLeaderboard(true);
   };
 
+  // Rastgele (tüm anketlerden) çözüm başlat
   const startRandom = async () => {
     const res = await fetch(`${apiUrl}/api/user/approved-surveys`);
     const data = await res.json();
     let allQuestions = [];
-    for (const survey of data.surveys) {
+    for (const survey of data.surveys.filter(s => (s.question_count ?? 0) > 0)) {
       const qRes = await fetch(
         `${apiUrl}/api/surveys/${survey.id}/questions`
       );
@@ -199,13 +207,15 @@ export default function UserPanel() {
         allQuestions = allQuestions.concat(qData.questions);
       }
     }
-    const filtered = allQuestions;
+    // Sadece çözülmeyenleri filtrele
+    const filtered = allQuestions.filter((q) => !correctAnswered.includes(q.id));
     filtered.sort(() => Math.random() - 0.5);
     setQuestions(filtered);
     setCurrentIdx(0);
     setMode("solve");
   };
 
+  // Timer
   useEffect(() => {
     if (mode === "solve" && questions.length > 0) {
       setTimeLeft(24);
@@ -222,9 +232,9 @@ export default function UserPanel() {
       setTimerActive(false);
       handleAnswer("bilmem");
     }
-    // eslint-disable-next-line
-  }, [timeLeft, timerActive]);
+  }, [timeLeft, timerActive]); // <-- eksik dependency düzeltildi
 
+  // Başarı mesajı
   const getSuccessMsg = (puan) => {
     if (puan <= 3) return "TEBRİKLER";
     if (puan <= 6) return "HARİKASIN";
@@ -232,6 +242,7 @@ export default function UserPanel() {
     return "MUHTEŞEMSİN";
   };
 
+  // Soruya cevap verildiğinde
   const handleAnswer = (cevap) => {
     setTimerActive(false);
     const q = questions[currentIdx];
@@ -251,19 +262,19 @@ export default function UserPanel() {
           let msg = "";
           let stars = false;
           if (cevap === "bilmem") msg = "ÖĞREN DE GEL";
-          else if (d.is_correct == 1) {
+          else if (d.is_correct === 1 || d.is_correct === "1") {
             msg = getSuccessMsg(q.point);
             stars = true;
           }
           else msg = "BİLEMEDİN";
           setFeedback(msg);
-          setShowStars(stars && d.is_correct == 1);
+          setShowStars(stars);
           setFeedbackActive(true);
 
           setTimeout(() => {
             setFeedbackActive(false);
             setShowStars(false);
-            if (d.is_correct == 1) {
+            if (d.is_correct === 1 || d.is_correct === "1") {
               setCorrectAnswered((prev) => [...prev, q.id]);
             }
             if (currentIdx < questions.length - 1) {
@@ -276,25 +287,59 @@ export default function UserPanel() {
           setInfo(d.error || "Cevap kaydedilemedi!");
         }
       })
-      .catch((e) => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
+      .catch(() => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
   };
 
-  // Çıkış fonksiyonu universal!
+  // Çıkış
   const handleLogout = async () => {
     await removeFeloxUser();
     window.location.href = "/login";
   };
 
+  // PANEL EKRANI
   if (!user) return <div>Yükleniyor...</div>;
 
-  // PANEL EKRANI
   if (mode === "panel") {
-    // ... (aynı, değişmedi, burayı kesiyorum)
-    // İstersen üstteki halini kullanabilirsin.
-    // Eğer istersen burayı da tüm kod olarak tekrar gönderebilirim.
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600">
+        <div className="bg-white/90 rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
+          <h2 className="text-2xl font-bold text-cyan-700 mb-4">
+            Kullanıcı Paneli
+          </h2>
+          <div className="mb-4 text-gray-700">
+            Hoş geldin <b>{user.ad} {user.soyad}</b>!
+          </div>
+          <div className="mb-3">
+            <b>Puanın:</b> <span className="text-emerald-700 text-xl">{totalPoints}</span>
+            <br />
+            <b>Cevapladığın Soru:</b> <span className="text-emerald-700 text-xl">{answeredCount}</span>
+          </div>
+          <button
+            className="mb-6 px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600"
+            onClick={handleLogout}
+          >
+            Çıkış Yap
+          </button>
+          <div className="flex flex-col gap-2 mb-5">
+            <button
+              className="px-4 py-2 bg-cyan-600 text-white rounded-xl hover:bg-cyan-800"
+              onClick={() => { fetchSurveys(); setMode("list"); }}
+            >
+              Onaylı Kategoriler
+            </button>
+            <button
+              className="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-800"
+              onClick={startRandom}
+            >
+              Rastgele Sorular
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  // --- Anket listesi ---
+  // ANKET LİSTESİ
   if (mode === "list") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600">
@@ -395,7 +440,7 @@ export default function UserPanel() {
     );
   }
 
-  // --- Soru çözüm ekranı ---
+  // SORU ÇÖZÜM EKRANI
   if (mode === "solve" && questions.length > 0) {
     const q = questions[currentIdx];
     return (
@@ -453,6 +498,7 @@ export default function UserPanel() {
     );
   }
 
+  // Soru çözümü sonrası
   if (mode === "thankyou") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600">
@@ -474,7 +520,7 @@ export default function UserPanel() {
     );
   }
 
-  // Çözülecek soru kalmadı ekranı
+  // Çözülecek soru kalmadı!
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600">
       <div className="bg-white/90 rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
