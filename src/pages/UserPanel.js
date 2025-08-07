@@ -369,6 +369,7 @@ export default function UserPanel() {
                         </thead>
                         <tbody>
                           {(leaderboards[p.key] ?? [])
+                           .filter(u => u.total_points > 0)
                             .slice(0, 10)
                             .map((u, i) => (
                               <tr
