@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 
-// Universal kullanıcı getter (web + mobil)
+// Universal kullanıcı getter (hem web, hem mobil)
 async function getFeloxUser() {
   let userStr = localStorage.getItem("felox_user");
   if (
@@ -32,14 +32,12 @@ async function removeFeloxUser() {
 }
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
-
 const PERIODS = [
   { key: "today", label: "Bugün" },
   { key: "week", label: "Bu Hafta" },
   { key: "month", label: "Bu Ay" },
   { key: "year", label: "Bu Yıl" },
 ];
-
 const Stars = () => (
   <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
     {[...Array(10)].map((_, i) => (
@@ -86,20 +84,23 @@ export default function UserPanel() {
   const [timeLeft, setTimeLeft] = useState(24);
   const [timerActive, setTimerActive] = useState(false);
 
+  // LEADERBOARD STATE
   const [rankInfos, setRankInfos] = useState({});
   const [leaderboards, setLeaderboards] = useState({});
   const [activePeriod, setActivePeriod] = useState("today");
   const [showLeaderboard, setShowLeaderboard] = useState(false);
 
+  // FEEDBACK STATE
   const [feedback, setFeedback] = useState("");
   const [feedbackActive, setFeedbackActive] = useState(false);
   const [showStars, setShowStars] = useState(false);
 
-  // Kategoriye özel leaderboard
+  // Kategoriye özel leaderboard için state'ler
   const [surveyLeaderboard, setSurveyLeaderboard] = useState([]);
   const [showSurveyLeaderboard, setShowSurveyLeaderboard] = useState(false);
   const [selectedSurvey, setSelectedSurvey] = useState(null);
 
+  // Universal olarak kullanıcıyı getir
   useEffect(() => {
     getFeloxUser().then((u) => {
       if (u) setUser(u);
@@ -107,6 +108,7 @@ export default function UserPanel() {
     });
   }, []);
 
+  // user geldikten sonra diğer dataları çek
   useEffect(() => {
     if (!user) return;
 
@@ -116,7 +118,7 @@ export default function UserPanel() {
         if (data.success) {
           setCorrectAnswered(
             data.answers
-              .filter(ans => ans.is_correct === 1 || ans.is_correct === "1")
+              .filter(ans => ans.is_correct == 1)
               .map(ans => ans.question_id)
           );
         }
@@ -148,22 +150,15 @@ export default function UserPanel() {
           setLeaderboards(prev => ({ ...prev, [p.key]: data.leaderboard }));
         });
     });
+    // eslint-disable-next-line
   }, [mode, user]);
 
-  // Sadece sorusu olan anketleri getir!
   const fetchSurveys = () => {
     fetch(`${apiUrl}/api/user/approved-surveys`)
       .then((res) => res.json())
-      .then((d) => {
-        if (d.success) {
-          setSurveys(
-            d.surveys.filter(s => (s.question_count ?? 0) > 0)
-          );
-        }
-      });
+      .then((d) => d.success && setSurveys(d.surveys));
   };
 
-  // Sadece çözülmemiş soruları getir
   const fetchQuestions = (surveyId) => {
     fetch(`${apiUrl}/api/surveys/${surveyId}/questions`)
       .then((res) => res.json())
@@ -179,7 +174,7 @@ export default function UserPanel() {
       });
   };
 
-  // Kategoriye özel leaderboard fetch
+  // Kategoriye özel leaderboard fetch fonksiyonu
   const fetchSurveyLeaderboard = async (surveyId) => {
     setSurveyLeaderboard([]);
     setSelectedSurvey(surveys.find(s => s.id === surveyId));
@@ -191,12 +186,11 @@ export default function UserPanel() {
     setShowSurveyLeaderboard(true);
   };
 
-  // Rastgele (tüm anketlerden) çözüm başlat
   const startRandom = async () => {
     const res = await fetch(`${apiUrl}/api/user/approved-surveys`);
     const data = await res.json();
     let allQuestions = [];
-    for (const survey of data.surveys.filter(s => (s.question_count ?? 0) > 0)) {
+    for (const survey of data.surveys) {
       const qRes = await fetch(
         `${apiUrl}/api/surveys/${survey.id}/questions`
       );
@@ -228,6 +222,7 @@ export default function UserPanel() {
       setTimerActive(false);
       handleAnswer("bilmem");
     }
+    // eslint-disable-next-line
   }, [timeLeft, timerActive]);
 
   const getSuccessMsg = (puan) => {
@@ -256,19 +251,19 @@ export default function UserPanel() {
           let msg = "";
           let stars = false;
           if (cevap === "bilmem") msg = "ÖĞREN DE GEL";
-          else if (d.is_correct === 1 || d.is_correct === "1") {
+          else if (d.is_correct == 1) {
             msg = getSuccessMsg(q.point);
             stars = true;
           }
           else msg = "BİLEMEDİN";
           setFeedback(msg);
-          setShowStars(stars);
+          setShowStars(stars && d.is_correct == 1);
           setFeedbackActive(true);
 
           setTimeout(() => {
             setFeedbackActive(false);
             setShowStars(false);
-            if (d.is_correct === 1 || d.is_correct === "1") {
+            if (d.is_correct == 1) {
               setCorrectAnswered((prev) => [...prev, q.id]);
             }
             if (currentIdx < questions.length - 1) {
@@ -281,83 +276,84 @@ export default function UserPanel() {
           setInfo(d.error || "Cevap kaydedilemedi!");
         }
       })
-      .catch(() => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
+      .catch((e) => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
   };
 
+  // Çıkış fonksiyonu universal!
   const handleLogout = async () => {
     await removeFeloxUser();
     window.location.href = "/login";
   };
 
-  if (!user) return <div>Yükleniyor...</div>;
+  if (!user) return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-500 to-cyan-700">
+      <span className="animate-spin text-4xl text-cyan-700">⏳</span>
+    </div>
+  );
 
+  // PANEL EKRANI
   if (mode === "panel") {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600">
-        <div className="bg-white/90 rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
-          <h2 className="text-2xl font-bold text-cyan-700 mb-4">
-            Kullanıcı Paneli
-          </h2>
-          <div className="mb-4 text-gray-700">
-            Hoş geldin <b>{user.ad} {user.soyad}</b>!
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-500 to-cyan-700 px-2">
+        <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-6">
+          <div className="flex flex-col items-center gap-2">
+            <div className="rounded-full bg-cyan-100 p-3 shadow-md mb-2">
+              <span className="text-3xl text-cyan-600">👤</span>
+            </div>
+            <h1 className="text-2xl font-extrabold text-cyan-700">{user.ad} {user.soyad}</h1>
+            <div className="flex gap-4 mt-2">
+              <div>
+                <div className="text-xs text-gray-400">Puanın</div>
+                <div className="text-xl font-bold text-emerald-600">{totalPoints}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400">Cevapladığın</div>
+                <div className="text-xl font-bold text-emerald-600">{answeredCount}</div>
+              </div>
+            </div>
           </div>
-          <div className="mb-3">
-            <b>Puanın:</b> <span className="text-emerald-700 text-xl">{totalPoints}</span>
-            <br />
-            <b>Cevapladığın Soru:</b> <span className="text-emerald-700 text-xl">{answeredCount}</span>
+
+          <div className="flex flex-col gap-3">
+            <button className="w-full py-3 rounded-2xl font-bold bg-cyan-600 hover:bg-cyan-800 text-white shadow-lg active:scale-95 transition"
+              onClick={() => { fetchSurveys(); setMode("list"); }}>
+              <span className="mr-2">📚</span> Onaylı Kategoriler
+            </button>
+            <button className="w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 hover:to-emerald-800 text-white shadow-lg active:scale-95 transition"
+              onClick={startRandom}>
+              <span className="mr-2">🎲</span> Rastgele Soru
+            </button>
+            <button className="w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-orange-500 to-yellow-400 hover:from-orange-700 text-white shadow-lg active:scale-95 transition"
+              onClick={() => setShowLeaderboard(true)}>
+              <span className="mr-2">🏆</span> Puan Tablosu
+            </button>
           </div>
+
           <button
-            className="mb-6 px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600"
+            className="w-full py-2 mt-2 rounded-2xl text-sm bg-gray-200 text-gray-600 hover:bg-gray-300 font-semibold"
             onClick={handleLogout}
           >
             Çıkış Yap
           </button>
-          <div className="flex flex-col gap-2 mb-5">
-            <button
-              className="px-4 py-2 bg-cyan-600 text-white rounded-xl hover:bg-cyan-800"
-              onClick={() => { fetchSurveys(); setMode("list"); }}
-            >
-              Onaylı Kategoriler
-            </button>
-            <button
-              className="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-800"
-              onClick={startRandom}
-            >
-              Rastgele Sorular
-            </button>
-            <button
-              className="px-4 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-700"
-              onClick={() => setShowLeaderboard(true)}
-            >
-              Puan Tablosu (Genel)
-            </button>
-          </div>
+
           {/* Genel puan tablosu modalı */}
           {showLeaderboard && (
-            <div className="fixed inset-0 bg-black/40 z-30 flex items-center justify-center">
-              <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto relative">
-                <button
-                  className="absolute top-2 right-2 text-2xl font-bold text-gray-500 hover:text-red-600"
-                  onClick={() => setShowLeaderboard(false)}
-                  title="Kapat"
-                >
+            <div className="fixed inset-0 z-30 bg-black/50 flex items-center justify-center">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-4 relative">
+                <button className="absolute top-2 right-3 text-2xl text-gray-400 hover:text-red-500"
+                  onClick={() => setShowLeaderboard(false)}>
                   &times;
                 </button>
-                <h3 className="text-xl font-bold mb-3 text-orange-700 text-center">
-                  Puan Tablosu (Genel)
-                </h3>
-                <div className="flex justify-center gap-2 mb-4">
-                  {PERIODS.map((p) => (
+                <h3 className="text-xl font-bold mb-3 text-orange-700 text-center">Puan Tablosu</h3>
+                <div className="flex justify-center gap-1 mb-2">
+                  {PERIODS.map(p => (
                     <button
                       key={p.key}
-                      className={`px-3 py-1 rounded-xl font-bold ${activePeriod === p.key ? "bg-orange-600 text-white" : "bg-orange-200 text-orange-800 hover:bg-orange-400"}`}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold ${activePeriod === p.key ? "bg-orange-600 text-white" : "bg-orange-100 text-orange-800 hover:bg-orange-400"}`}
                       onClick={() => setActivePeriod(p.key)}
-                    >
-                      {p.label}
-                    </button>
+                    >{p.label}</button>
                   ))}
                 </div>
-                <table className="min-w-full border text-sm">
+                <table className="min-w-full border text-xs">
                   <thead>
                     <tr>
                       <th className="p-1 border">#</th>
@@ -369,7 +365,7 @@ export default function UserPanel() {
                   <tbody>
                     {Array.isArray(leaderboards[activePeriod]) && leaderboards[activePeriod].length > 0 ? (
                       leaderboards[activePeriod].slice(0, 10).map((u, i) => (
-                        <tr key={u.id} className={u.id === user.id ? "bg-yellow-200 font-bold" : ""}>
+                        <tr key={u.id} className={u.id === user.id ? "bg-yellow-100 font-bold" : ""}>
                           <td className="p-1 border">{i + 1}</td>
                           <td className="p-1 border">{u.ad}</td>
                           <td className="p-1 border">{u.soyad}</td>
@@ -378,9 +374,7 @@ export default function UserPanel() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={4} className="text-gray-500 text-center py-2">
-                          Veri yok.
-                        </td>
+                        <td colSpan={4} className="text-gray-400 text-center py-2">Veri yok.</td>
                       </tr>
                     )}
                   </tbody>
@@ -393,11 +387,11 @@ export default function UserPanel() {
     );
   }
 
-  // ANKET LİSTESİ
+  // --- Anket listesi ---
   if (mode === "list") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600">
-        <div className="bg-white/90 rounded-2xl shadow-xl p-8 w-full max-w-lg text-center">
+        <div className="bg-white/90 rounded-2xl shadow-xl p-6 w-full max-w-lg text-center">
           <h2 className="text-xl font-bold text-cyan-700 mb-4">
             Onaylanmış Kategoriler
           </h2>
@@ -494,7 +488,7 @@ export default function UserPanel() {
     );
   }
 
-  // Soru çözüm ekranı
+  // --- Soru çözüm ekranı ---
   if (mode === "solve" && questions.length > 0) {
     const q = questions[currentIdx];
     return (
@@ -573,7 +567,7 @@ export default function UserPanel() {
     );
   }
 
-  // Çözülecek soru kalmadı!
+  // Çözülecek soru kalmadı ekranı
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600">
       <div className="bg-white/90 rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
