@@ -199,7 +199,7 @@ export default function UserPanel() {
         allQuestions = allQuestions.concat(qData.questions);
       }
     }
-    const filtered = allQuestions.filter((q) => !correctAnswered.includes(q.id));
+    const filtered = allQuestions;
     filtered.sort(() => Math.random() - 0.5);
     setQuestions(filtered);
     setCurrentIdx(0);
