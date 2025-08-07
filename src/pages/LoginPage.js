@@ -44,14 +44,29 @@ export default function LoginPage() {
   const [message, setMessage] = useState("");
   const navigate = useNavigate();
 
-  // Otomatik yönlendir
+  // Otomatik yönlendir (Kullanıcı gerçekten backend'de varsa!)
   useEffect(() => {
-    getFeloxUser().then((user) => {
-      if (user && user.role) {
-        const role = user.role.toUpperCase();
-        if (role === "USER") navigate("/user");
-        else if (role === "EDITOR") navigate("/editor");
-        else if (role === "ADMIN") navigate("/admin");
+    getFeloxUser().then(async (user) => {
+      if (user && user.id && user.role) {
+        try {
+          // Kullanıcı gerçekten backend'de var mı?
+          const res = await fetch(`${apiUrl}/api/user/${user.id}/exists`);
+          const data = await res.json();
+          if (data.exists) {
+            const role = user.role.toUpperCase();
+            if (role === "USER") navigate("/user");
+            else if (role === "EDITOR") navigate("/editor");
+            else if (role === "ADMIN") navigate("/admin");
+          } else {
+            // Kayıt backend'de yok, localStorage temizle
+            localStorage.removeItem("felox_user");
+          }
+        } catch {
+          // Sunucuya ulaşamazsa localStorage'ı silme, login ekranında bırak
+        }
+      } else {
+        // Kayıt bozuksa localStorage temizle
+        localStorage.removeItem("felox_user");
       }
     });
   }, [navigate]);
