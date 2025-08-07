@@ -118,7 +118,7 @@ export default function UserPanel() {
         if (data.success) {
           setCorrectAnswered(
             data.answers
-              .filter(ans => ans.is_correct === 1)
+              .filter(ans => ans.is_correct == 1)
               .map(ans => ans.question_id)
           );
         }
@@ -251,19 +251,19 @@ export default function UserPanel() {
           let msg = "";
           let stars = false;
           if (cevap === "bilmem") msg = "ÖĞREN DE GEL";
-          else if (d.is_correct === 1) {
+          else if (d.is_correct == 1) {
             msg = getSuccessMsg(q.point);
             stars = true;
           }
           else msg = "BİLEMEDİN";
           setFeedback(msg);
-          setShowStars(stars && d.is_correct === 1);
+          setShowStars(stars && d.is_correct == 1);
           setFeedbackActive(true);
 
           setTimeout(() => {
             setFeedbackActive(false);
             setShowStars(false);
-            if (d.is_correct === 1) {
+            if (d.is_correct == 1) {
               setCorrectAnswered((prev) => [...prev, q.id]);
             }
             if (currentIdx < questions.length - 1) {
