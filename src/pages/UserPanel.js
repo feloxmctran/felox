@@ -88,6 +88,7 @@ export default function UserPanel() {
 
   const [rankInfos, setRankInfos] = useState({});
   const [leaderboards, setLeaderboards] = useState({});
+  const [activePeriod, setActivePeriod] = useState("today");
   const [showLeaderboard, setShowLeaderboard] = useState(false);
 
   const [feedback, setFeedback] = useState("");
@@ -99,7 +100,6 @@ export default function UserPanel() {
   const [showSurveyLeaderboard, setShowSurveyLeaderboard] = useState(false);
   const [selectedSurvey, setSelectedSurvey] = useState(null);
 
-  // Universal olarak kullanıcıyı getir
   useEffect(() => {
     getFeloxUser().then((u) => {
       if (u) setUser(u);
@@ -107,7 +107,6 @@ export default function UserPanel() {
     });
   }, []);
 
-  // Kullanıcı gelince: doğru cevaplar, puan, cevaplananlar, sıralama ve leaderboardları çek
   useEffect(() => {
     if (!user) return;
 
@@ -117,7 +116,7 @@ export default function UserPanel() {
         if (data.success) {
           setCorrectAnswered(
             data.answers
-              .filter(ans => ans.is_correct === 1 || ans.is_correct === "1") // int veya string
+              .filter(ans => ans.is_correct === 1 || ans.is_correct === "1")
               .map(ans => ans.question_id)
           );
         }
@@ -170,7 +169,6 @@ export default function UserPanel() {
       .then((res) => res.json())
       .then((d) => {
         if (d.success) {
-          // SADECE DAHA ÖNCE DOĞRU CEVAPLANMAMIŞ soruları getir
           const filtered = d.questions.filter(
             (q) => !correctAnswered.includes(q.id)
           );
@@ -207,7 +205,6 @@ export default function UserPanel() {
         allQuestions = allQuestions.concat(qData.questions);
       }
     }
-    // Sadece çözülmeyenleri filtrele
     const filtered = allQuestions.filter((q) => !correctAnswered.includes(q.id));
     filtered.sort(() => Math.random() - 0.5);
     setQuestions(filtered);
@@ -215,7 +212,6 @@ export default function UserPanel() {
     setMode("solve");
   };
 
-  // Timer
   useEffect(() => {
     if (mode === "solve" && questions.length > 0) {
       setTimeLeft(24);
@@ -232,9 +228,8 @@ export default function UserPanel() {
       setTimerActive(false);
       handleAnswer("bilmem");
     }
-  }, [timeLeft, timerActive]); // <-- eksik dependency düzeltildi
+  }, [timeLeft, timerActive]);
 
-  // Başarı mesajı
   const getSuccessMsg = (puan) => {
     if (puan <= 3) return "TEBRİKLER";
     if (puan <= 6) return "HARİKASIN";
@@ -242,7 +237,6 @@ export default function UserPanel() {
     return "MUHTEŞEMSİN";
   };
 
-  // Soruya cevap verildiğinde
   const handleAnswer = (cevap) => {
     setTimerActive(false);
     const q = questions[currentIdx];
@@ -290,13 +284,11 @@ export default function UserPanel() {
       .catch(() => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
   };
 
-  // Çıkış
   const handleLogout = async () => {
     await removeFeloxUser();
     window.location.href = "/login";
   };
 
-  // PANEL EKRANI
   if (!user) return <div>Yükleniyor...</div>;
 
   if (mode === "panel") {
@@ -333,7 +325,69 @@ export default function UserPanel() {
             >
               Rastgele Sorular
             </button>
+            <button
+              className="px-4 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-700"
+              onClick={() => setShowLeaderboard(true)}
+            >
+              Puan Tablosu (Genel)
+            </button>
           </div>
+          {/* Genel puan tablosu modalı */}
+          {showLeaderboard && (
+            <div className="fixed inset-0 bg-black/40 z-30 flex items-center justify-center">
+              <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto relative">
+                <button
+                  className="absolute top-2 right-2 text-2xl font-bold text-gray-500 hover:text-red-600"
+                  onClick={() => setShowLeaderboard(false)}
+                  title="Kapat"
+                >
+                  &times;
+                </button>
+                <h3 className="text-xl font-bold mb-3 text-orange-700 text-center">
+                  Puan Tablosu (Genel)
+                </h3>
+                <div className="flex justify-center gap-2 mb-4">
+                  {PERIODS.map((p) => (
+                    <button
+                      key={p.key}
+                      className={`px-3 py-1 rounded-xl font-bold ${activePeriod === p.key ? "bg-orange-600 text-white" : "bg-orange-200 text-orange-800 hover:bg-orange-400"}`}
+                      onClick={() => setActivePeriod(p.key)}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <table className="min-w-full border text-sm">
+                  <thead>
+                    <tr>
+                      <th className="p-1 border">#</th>
+                      <th className="p-1 border">Ad</th>
+                      <th className="p-1 border">Soyad</th>
+                      <th className="p-1 border">Puan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.isArray(leaderboards[activePeriod]) && leaderboards[activePeriod].length > 0 ? (
+                      leaderboards[activePeriod].slice(0, 10).map((u, i) => (
+                        <tr key={u.id} className={u.id === user.id ? "bg-yellow-200 font-bold" : ""}>
+                          <td className="p-1 border">{i + 1}</td>
+                          <td className="p-1 border">{u.ad}</td>
+                          <td className="p-1 border">{u.soyad}</td>
+                          <td className="p-1 border">{u.total_points}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="text-gray-500 text-center py-2">
+                          Veri yok.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -440,7 +494,7 @@ export default function UserPanel() {
     );
   }
 
-  // SORU ÇÖZÜM EKRANI
+  // Soru çözüm ekranı
   if (mode === "solve" && questions.length > 0) {
     const q = questions[currentIdx];
     return (
@@ -498,7 +552,6 @@ export default function UserPanel() {
     );
   }
 
-  // Soru çözümü sonrası
   if (mode === "thankyou") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600">
