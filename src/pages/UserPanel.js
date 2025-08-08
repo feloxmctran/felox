@@ -382,7 +382,7 @@ export default function UserPanel() {
                 setMode("list");
               }}
             >
-              <span className="mr-2">📚</span> Onaylanmış Kategoriler
+              <span className="mr-2">📚</span>Kategoriler
             </button>
             <button
               className="w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 hover:to-emerald-800 text-white shadow-lg active:scale-95 transition"
@@ -485,7 +485,7 @@ export default function UserPanel() {
         <div className="max-w-md mx-auto">
           <div className="bg-white/95 rounded-3xl shadow-2xl p-5">
             <h2 className="text-2xl font-extrabold text-cyan-700 text-center mb-4">
-              Onaylanmış Kategoriler
+              Kategoriler
             </h2>
 
             {surveys.length === 0 ? (
