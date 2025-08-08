@@ -1,6 +1,7 @@
 // src/pages/EditorPanel.js
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import * as XLSX from "xlsx"; // ✅ Excel okuma için eklendi
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
@@ -188,6 +189,132 @@ export default function EditorPanel() {
     }
   };
 
+  // ✅ EXCEL TOPLU EKLEME (Yeni)
+  const handleBulkUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (!["xlsx", "xls"].includes(ext)) {
+      alert("Lütfen .xlsx veya .xls uzantılı Excel dosyası yükleyin.");
+      e.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const data = evt.target.result;
+        const wb = XLSX.read(data, { type: "binary" });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+        if (!rows.length) {
+          alert("Excel sayfası boş görünüyor.");
+          return;
+        }
+
+        // Beklenen kolon adları: question | correct_answer | point
+        const normalized = rows.map((r, i) => {
+          // Esnek kolon isim desteği
+          const q =
+            r.question ||
+            r.soru ||
+            r.Soru ||
+            r.Question ||
+            r["Soru Metni"] ||
+            "";
+
+          // correct_answer’ı normalize et (küçük harf, Türkçe varyantlar)
+            let caRaw =
+            r.correct_answer ||
+            r["correct answer"] ||
+            r["dogru"] ||
+            r["doğru"] ||
+            r["Dogru"] ||
+            r["Doğru"] ||
+            r["cevap"] ||
+            r["Cevap"] ||
+            r.answer ||
+            r.Answer ||
+            "";
+          let ca = String(caRaw).trim().toLowerCase();
+          if (["evet", "hayır", "hayir", "bilmem"].indexOf(ca) === -1) {
+            // İngilizce ya da farklı girişleri dönüştür
+            if (["yes", "true", "1"].includes(ca)) ca = "evet";
+            else if (["no", "false", "0"].includes(ca)) ca = "hayır";
+            else if (["dontknow", "unknown", "idk", "skip", "empty"].includes(ca)) ca = "bilmem";
+          }
+          if (ca === "hayir") ca = "hayır";
+
+          const p =
+            Number(
+              r.point ||
+                r.puan ||
+                r.Puan ||
+                r.Point ||
+                r["puan (1-10)"] ||
+                r["Puan (1-10)"] ||
+                r["Score"] ||
+                1
+            ) || 1;
+
+          return {
+            question: String(q).trim(),
+            correct_answer: ca,
+            point: Math.min(10, Math.max(1, p)),
+            __row: i + 2, // Excel’de satır takibi (başlık satırı 1)
+          };
+        });
+
+        // Basit doğrulama
+        const problems = [];
+        normalized.forEach((row) => {
+          if (!row.question) problems.push(`Satır ${row.__row}: "question" boş olamaz.`);
+          if (!["evet", "hayır", "bilmem"].includes(row.correct_answer)) {
+            problems.push(
+              `Satır ${row.__row}: "correct_answer" evet/hayır/bilmem olmalı (şu: "${row.correct_answer}")`
+            );
+          }
+          if (!row.point || isNaN(row.point) || row.point < 1 || row.point > 10) {
+            problems.push(`Satır ${row.__row}: "point" 1-10 arası olmalı (şu: "${row.point}")`);
+          }
+        });
+
+        if (problems.length) {
+          alert("Excel doğrulama hataları:\n\n" + problems.join("\n"));
+          return;
+        }
+
+        // Backend’e gönder
+        const res = await fetch(
+          `${apiUrl}/api/surveys/${selectedSurvey.id}/questions/bulk`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ questions: normalized.map(({ __row, ...r }) => r) }),
+          }
+        );
+        const json = await res.json();
+        if (json.success) {
+          alert(`Toplu yükleme başarılı! Eklenen soru sayısı: ${normalized.length}`);
+          // Yeniden detayları çek
+          fetchSurveyDetails(selectedSurvey.id);
+        } else {
+          alert(json.error || "Toplu yükleme başarısız.");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Dosya okunamadı ya da işlenemedi.");
+      } finally {
+        // input'u temizle ki aynı dosya tekrar seçilebilsin
+        e.target.value = "";
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   // ------------------ RENDER ------------------
 
   // Kullanıcı yüklenmediyse beklet
@@ -324,7 +451,6 @@ export default function EditorPanel() {
                 <option value="Orta(6-8 puan)">Orta(6-8 puan)</option>
                 <option value="Temel(1-5 puan)">Temel(1-5 puan)</option>
                 <option value="Özel">Özel</option>
-
               </select>
 
               <div className="text-left mt-2 font-semibold text-blue-700">Sorular</div>
@@ -489,10 +615,11 @@ export default function EditorPanel() {
                 <span className="bg-red-200 text-red-800 px-2 py-1 rounded">Reddedildi</span>
               )}
             </div>
+
             <div className="mt-3 mb-1 font-semibold text-cyan-700">Sorular</div>
             <ol className="list-decimal ml-5">
-              {surveyQuestions.map((q, i) => (
-                <li key={q.id}>
+              {surveyQuestions.map((q) => (
+                <li key={q.id} className="mb-1">
                   <span>
                     {q.question}
                     {typeof q.point === "number" && (
@@ -503,6 +630,24 @@ export default function EditorPanel() {
                 </li>
               ))}
             </ol>
+
+            {/* ✅ Toplu Soru Ekle (Excel) */}
+            <div className="mt-4 p-3 bg-white rounded-xl border border-cyan-200">
+              <div className="font-semibold text-cyan-700 mb-2">📂 Toplu Soru Ekle (Excel)</div>
+              <p className="text-sm text-gray-600 mb-2">
+                Excel dosya formatı: <b>question</b>, <b>correct_answer</b> (evet/hayır/bilmem), <b>point</b> (1-10).
+              </p>
+              <label className="inline-block bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl cursor-pointer">
+                Dosya Seç (.xlsx/.xls)
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleBulkUpload}
+                  style={{ display: "none" }}
+                />
+              </label>
+            </div>
+
             <button
               className="mt-6 px-4 py-2 bg-gray-400 text-white rounded-xl hover:bg-gray-600"
               onClick={() => setMode("list")}
