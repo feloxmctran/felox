@@ -83,14 +83,13 @@ export default function UserPanel() {
   const [answeredCount, setAnsweredCount] = useState(0);
 
   // Görünüm modu
-  const [mode, setMode] = useState("panel"); // panel | list | solve | thankyou
+  const [mode, setMode] = useState("panel"); // panel | list | solve | thankyou | genius
 
   // Kategoriler & sorular
   const [surveys, setSurveys] = useState([]);
   const [questions, setQuestions] = useState([]);
 
-  // Cevaplanmış/Doğru sorular
-  const [answered, setAnswered] = useState([]);
+  // Doğru sorular (id listesi)
   const [correctAnswered, setCorrectAnswered] = useState([]);
 
   // Soru çözümü
@@ -100,7 +99,6 @@ export default function UserPanel() {
   const [timerActive, setTimerActive] = useState(false);
 
   // Genel leaderboard
-  const [rankInfos, setRankInfos] = useState({});
   const [leaderboards, setLeaderboards] = useState({});
   const [activePeriod, setActivePeriod] = useState("today");
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -118,11 +116,19 @@ export default function UserPanel() {
   const [showStars, setShowStars] = useState(false);
   const [starsCount, setStarsCount] = useState(1);
 
-  // ------- YENİ: "Puanlarım" modalı için state'ler -------
+  // ------- "Puanlarım" modalı -------
   const [showMyPerf, setShowMyPerf] = useState(false);
   const [myPerf, setMyPerf] = useState([]);
   const [myPerfLoading, setMyPerfLoading] = useState(false);
   const [myPerfError, setMyPerfError] = useState("");
+
+  // ------- Kademeli Yarış -------
+  const [ladderActive, setLadderActive] = useState(false); // yarış modu açık mı?
+  const [ladderLevel, setLadderLevel] = useState(1); // 1..10
+  const [ladderAttempts, setLadderAttempts] = useState(0); // bu seviyede denenmiş (bilmem hariç)
+  const [ladderCorrect, setLadderCorrect] = useState(0); // bu seviyede doğru
+  const [showLevelUpPrompt, setShowLevelUpPrompt] = useState(false); // zorlaştıralım mı?
+  const [loadingLevelQuestions, setLoadingLevelQuestions] = useState(false);
 
   /* -------------------- Kullanıcıyı yükle -------------------- */
   useEffect(() => {
@@ -136,22 +142,18 @@ export default function UserPanel() {
   useEffect(() => {
     if (!user) return;
 
-    // Doğru cevapları ve tüm cevaplananları çek
+    // Doğru cevapları çek (id listesi)
     fetch(`${apiUrl}/api/user/${user.id}/answers`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
           setCorrectAnswered(
             data.answers
-              .filter((ans) => ans.is_correct == 1)
+              .filter((ans) => ans.is_correct === 1)
               .map((ans) => ans.question_id)
           );
         }
       });
-
-    fetch(`${apiUrl}/api/user/${user.id}/answered`)
-      .then((res) => res.json())
-      .then((d) => d.success && setAnswered(d.answered));
 
     // Toplam puan ve cevap sayısı
     fetch(`${apiUrl}/api/user/${user.id}/total-points`)
@@ -163,12 +165,8 @@ export default function UserPanel() {
         }
       });
 
-    // Genel leaderboard & kullanıcı rank bilgileri
+    // Genel leaderboard
     PERIODS.forEach((p) => {
-      fetch(`${apiUrl}/api/user/${user.id}/rank?period=${p.key}`)
-        .then((res) => res.json())
-        .then((data) => setRankInfos((prev) => ({ ...prev, [p.key]: data })));
-
       fetch(`${apiUrl}/api/leaderboard?period=${p.key}`)
         .then((res) => res.json())
         .then((data) => {
@@ -180,7 +178,7 @@ export default function UserPanel() {
     });
 
     // eslint-disable-next-line
-  }, [mode, user]);
+  }, [user]);
 
   /* -------------------- Kategorileri (onaylı) çek -------------------- */
   const fetchSurveys = () => {
@@ -195,13 +193,13 @@ export default function UserPanel() {
       .then((res) => res.json())
       .then((d) => {
         if (d.success) {
-          // Kullanıcının doğru bildiklerini filtrele
           const filtered = d.questions.filter(
             (q) => !correctAnswered.includes(q.id)
           );
           setQuestions(filtered);
           setCurrentIdx(0);
           setMode("solve");
+          setLadderActive(false); // normal çözüm
         }
       });
   };
@@ -210,7 +208,6 @@ export default function UserPanel() {
   const loadSurveyLeaderboard = async (surveyId, periodKey) => {
     setSurveyLoading(true);
     try {
-      // Backend’in period parametresini desteklemesi gerekir.
       const res = await fetch(
         `${apiUrl}/api/surveys/${surveyId}/leaderboard?period=${periodKey}`
       );
@@ -241,7 +238,7 @@ export default function UserPanel() {
     }
   };
 
-  /* -------------------- Rastgele soru -------------------- */
+  /* -------------------- Rastgele soru (serbest) -------------------- */
   const startRandom = async () => {
     const res = await fetch(`${apiUrl}/api/user/approved-surveys`);
     const data = await res.json();
@@ -253,7 +250,6 @@ export default function UserPanel() {
         allQuestions = allQuestions.concat(qData.questions);
       }
     }
-    // Kullanıcının doğru bildiklerini ele
     const filtered = allQuestions.filter(
       (q) => !correctAnswered.includes(q.id)
     );
@@ -261,6 +257,65 @@ export default function UserPanel() {
     setQuestions(filtered);
     setCurrentIdx(0);
     setMode("solve");
+    setLadderActive(false);
+  };
+
+  /* -------------------- Kademeli Yarış -------------------- */
+  const loadLevelQuestions = async (level) => {
+    setLoadingLevelQuestions(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/user/approved-surveys`);
+      const data = await res.json();
+      let all = [];
+      for (const survey of data.surveys) {
+        const qRes = await fetch(
+          `${apiUrl}/api/surveys/${survey.id}/questions`
+        );
+        const qData = await qRes.json();
+        if (qData.success) {
+          all = all.concat(
+            qData.questions.filter(
+              (qq) => qq.point === level && !correctAnswered.includes(qq.id)
+            )
+          );
+        }
+      }
+      // yeterince soru yoksa yine de devam — kullanıcı zaten doğru bildiklerini geçmiş olabilir
+      // rastgele sırala
+      for (let i = all.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [all[i], all[j]] = [all[j], all[i]];
+      }
+      setQuestions(all);
+      setCurrentIdx(0);
+      setMode("solve");
+      setLadderActive(true);
+    } finally {
+      setLoadingLevelQuestions(false);
+    }
+  };
+
+  const startLadder = async () => {
+    setLadderLevel(1);
+    setLadderAttempts(0);
+    setLadderCorrect(0);
+    await loadLevelQuestions(1);
+  };
+
+  const checkLadderProgress = () => {
+    // Eşik: en az 100 deneme (bilmem hariç) ve %80 doğruluk
+    if (ladderAttempts >= 100) {
+      const acc = ladderAttempts > 0 ? ladderCorrect / ladderAttempts : 0;
+      if (acc >= 0.8) {
+        if (ladderLevel < 10) {
+          setShowLevelUpPrompt(true);
+        } else {
+          // 10. seviyeyi de geçti -> dahi ekranı
+          setMode("genius");
+          setLadderActive(false);
+        }
+      }
+    }
   };
 
   /* -------------------- Zamanlayıcı -------------------- */
@@ -291,6 +346,15 @@ export default function UserPanel() {
     return "MUHTEŞEMSİN";
   };
 
+  const refreshUserStats = async () => {
+    const r = await fetch(`${apiUrl}/api/user/${user.id}/total-points`);
+    const data = await r.json();
+    if (data.success) {
+      setTotalPoints(data.totalPoints);
+      setAnsweredCount(data.answeredCount);
+    }
+  };
+
   const handleAnswer = (cevap) => {
     setTimerActive(false);
     const q = questions[currentIdx];
@@ -311,7 +375,7 @@ export default function UserPanel() {
           let stars = false;
           let starCount = 1;
           if (cevap === "bilmem") msg = "ÖĞREN DE GEL";
-          else if (d.is_correct == 1) {
+          else if (d.is_correct === 1) {
             msg = getSuccessMsg(q.point);
             stars = true;
             starCount = Math.max(1, Math.min(q.point || 1, 10));
@@ -319,19 +383,40 @@ export default function UserPanel() {
 
           setFeedback(msg);
           setStarsCount(starCount);
-          setShowStars(stars && d.is_correct == 1);
+          setShowStars(stars && d.is_correct === 1);
           setFeedbackActive(true);
+
+          // Kademeli istatistikler
+          if (ladderActive && cevap !== "bilmem") {
+            setLadderAttempts((prev) => prev + 1);
+            if (d.is_correct === 1) setLadderCorrect((prev) => prev + 1);
+          }
 
           setTimeout(() => {
             setFeedbackActive(false);
             setShowStars(false);
-            if (d.is_correct == 1) {
+
+            // doğruysa bu soruyu bir daha göstermeyelim
+            if (d.is_correct === 1) {
               setCorrectAnswered((prev) => [...prev, q.id]);
             }
+
+            // kullanıcı istatistiklerini tazeleyelim
+            refreshUserStats();
+
             if (currentIdx < questions.length - 1) {
               setCurrentIdx((prev) => prev + 1);
             } else {
-              setMode("thankyou");
+              // soru bitti — kademeli yarış aktifse yeni bir batch daha yükleyelim
+              if (ladderActive) {
+                checkLadderProgress();
+                // Eğer seviye artırma önerisi açılmadıysa aynı seviyeden yeni karma yükle
+                if (!showLevelUpPrompt) {
+                  loadLevelQuestions(ladderLevel);
+                }
+              } else {
+                setMode("thankyou");
+              }
             }
           }, 1700);
         } else {
@@ -398,6 +483,16 @@ export default function UserPanel() {
           </div>
 
           <div className="flex flex-col gap-3 mt-6">
+            {/* YENİ: Kademeli Yarış */}
+            <button
+              className="w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-fuchsia-600 to-pink-500 hover:to-fuchsia-800 text-white shadow-lg active:scale-95 transition"
+              onClick={startLadder}
+              disabled={loadingLevelQuestions}
+              title="1 puanlık sorulardan başlayarak seviyeni yükselt!"
+            >
+              {loadingLevelQuestions ? "Yükleniyor…" : "⚡ Kademeli Yarış"}
+            </button>
+
             <button
               className="w-full py-3 rounded-2xl font-bold bg-cyan-600 hover:bg-cyan-800 text-white shadow-lg active:scale-95 transition"
               onClick={() => {
@@ -419,7 +514,7 @@ export default function UserPanel() {
             >
               <span className="mr-2">🏆</span> Puan Tablosu
             </button>
-            {/* YENİ: Puanlarım */}
+            {/* Puanlarım */}
             <button
               className="w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-purple-600 to-fuchsia-500 hover:to-purple-800 text-white shadow-lg active:scale-95 transition"
               onClick={() => {
@@ -507,7 +602,7 @@ export default function UserPanel() {
             </div>
           )}
 
-          {/* YENİ: Puanlarım modalı */}
+          {/* Puanlarım modalı (Net puan) */}
           {showMyPerf && (
             <div className="fixed inset-0 z-30 bg-black/50 flex items-center justify-center p-3">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-4 relative">
@@ -549,13 +644,7 @@ export default function UserPanel() {
                           <th className="p-2 border">Doğru</th>
                           <th className="p-2 border">Yanlış</th>
                           <th className="p-2 border">Bilmem</th>
-                          <th
-                            className="p-2 border"
-                            title="Doğru puan / Mümkün puan"
-                          >
-                            Puan
-                          </th>
-                          <th className="p-2 border">% Başarı</th>
+                          <th className="p-2 border">Net Puan</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -583,11 +672,16 @@ export default function UserPanel() {
                             <td className="p-2 border text-center">
                               {r.bilmem}
                             </td>
-                            <td className="p-2 border text-center">
-                              {r.earned_points}/{r.possible_points}
-                            </td>
-                            <td className="p-2 border text-center">
-                              {r.score_percent ?? "-"}
+                            <td
+                              className={`p-2 border text-center ${
+                                (r.net_points || 0) > 0
+                                  ? "text-emerald-700 font-bold"
+                                  : (r.net_points || 0) < 0
+                                  ? "text-red-600 font-bold"
+                                  : ""
+                              }`}
+                            >
+                              {r.net_points}
                             </td>
                           </tr>
                         ))}
@@ -595,6 +689,52 @@ export default function UserPanel() {
                     </table>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Kademeli: seviye artırım promptu */}
+          {showLevelUpPrompt && (
+            <div className="fixed inset-0 z-40 bg-black/50 flex items-center justify-center p-3">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-5 text-center relative">
+                <button
+                  className="absolute top-2 right-3 text-2xl text-gray-400 hover:text-red-500"
+                  onClick={() => setShowLevelUpPrompt(false)}
+                  title="Kapat"
+                >
+                  &times;
+                </button>
+                <div className="text-2xl font-bold text-emerald-700 mb-2">
+                  Soruları biraz zorlaştıralım mı?
+                </div>
+                <div className="text-gray-600 mb-4">
+                  Harika gidiyorsun! {ladderLevel}. seviyeyi başarıyla geçtin.
+                </div>
+                <div className="flex gap-3 justify-center">
+                  <button
+                    className="px-4 py-2 rounded-2xl bg-emerald-600 text-white hover:bg-emerald-800"
+                    onClick={async () => {
+                      setShowLevelUpPrompt(false);
+                      const next = Math.min(10, ladderLevel + 1);
+                      setLadderLevel(next);
+                      setLadderAttempts(0);
+                      setLadderCorrect(0);
+                      await loadLevelQuestions(next);
+                    }}
+                  >
+                    Evet, zorlaştır
+                  </button>
+                  <button
+                    className="px-4 py-2 rounded-2xl bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    onClick={() => {
+                      setShowLevelUpPrompt(false);
+                      // aynı seviyeden devam
+                      loadLevelQuestions(ladderLevel);
+                    }}
+                  >
+                    Hayır, böyle iyi
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -757,6 +897,9 @@ export default function UserPanel() {
           <h2 className="text-xl font-bold text-cyan-700 mb-3">
             Soru {currentIdx + 1} / {questions.length}
           </h2>
+        <div className="text-sm text-gray-600 mb-1">
+          {ladderActive ? `Kademeli Yarış • Seviye ${ladderLevel} • Deneme ${ladderAttempts} • Doğru ${ladderCorrect}` : "Standart Mod"}
+        </div>
           <div className="text-4xl font-mono text-emerald-700 mb-2 select-none">
             {timeLeft}
           </div>
@@ -801,6 +944,28 @@ export default function UserPanel() {
               {showStars && <Stars count={starsCount} />}
             </div>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  /* -------------------- DAHİ (kademeli final) -------------------- */
+  if (mode === "genius") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-yellow-400 to-orange-600 px-3">
+        <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center">
+          <h2 className="text-3xl font-extrabold text-orange-700 mb-3">
+            Tamam artık ben sana daha ne sorayım, sen bir dahisin! 🎉
+          </h2>
+          <p className="text-gray-700 mb-4">
+            10. seviyede de %80 başarıyı geçtin. Muhteşemsin!
+          </p>
+          <button
+            className="px-4 py-2 bg-cyan-600 text-white rounded-2xl hover:bg-cyan-800"
+            onClick={() => setMode("panel")}
+          >
+            Panele Dön
+          </button>
         </div>
       </div>
     );
