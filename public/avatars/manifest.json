@@ -1,0 +1,114 @@
+{
+  "Türkiye Tarihi": {
+    "male": "turkiye-tarihi-male.png",
+    "female": "turkiye-tarihi-female.png"
+  },
+  "Dünya Tarihi": {
+    "male": "dunya-tarihi-male.png",
+    "female": "dunya-tarihi-female.png"
+  },
+  "Ülke başkentleri": {
+    "male": "ulke-baskentleri-male.png",
+    "female": "ulke-baskentleri-female.png"
+  },
+  "Türkiye Coğrafyası": {
+    "male": "turkiye-cografyasi-male.png",
+    "female": "turkiye-cografyasi-female.png"
+  },
+  "Dünya Coğrafyası": {
+    "male": "dunya-cografyasi-male.png",
+    "female": "dunya-cografyasi-female.png"
+  },
+  "Türk edebiyatı": {
+    "male": "turk-edebiyati-male.png",
+    "female": "turk-edebiyati-female.png"
+  },
+  "Dünya Edebiyatı": {
+    "male": "dunya-edebiyati-male.png",
+    "female": "dunya-edebiyati-female.png"
+  },
+  "Dünya masalları": {
+    "male": "dunya-masallari-male.png",
+    "female": "dunya-masallari-female.png"
+  },
+  "Türkiye Süper Lig": {
+    "male": "turkiye-super-lig-male.png",
+    "female": "turkiye-super-lig-female.png"
+  },
+  "Dünya Futbol Tarihi": {
+    "male": "dunya-futbol-tarihi-male.png",
+    "female": "dunya-futbol-tarihi-female.png"
+  },
+  "Basketbol ve Diğer Sporlar": {
+    "male": "basketbol-ve-diger-sporlar-male.png",
+    "female": "basketbol-ve-diger-sporlar-female.png"
+  },
+  "Klasik müzik": {
+    "male": "klasik-muzik-male.png",
+    "female": "klasik-muzik-female.png"
+  },
+  "Türkçe Müzik": {
+    "male": "turkce-muzik-male.png",
+    "female": "turkce-muzik-female.png"
+  },
+  "Yabancı Müzik": {
+    "male": "yabanci-muzik-male.png",
+    "female": "yabanci-muzik-female.png"
+  },
+  "Türk Sineması": {
+    "male": "turk-sinemasi-male.png",
+    "female": "turk-sinemasi-female.png"
+  },
+  "Yeşilçam": {
+    "male": "yesilcam-male.png",
+    "female": "yesilcam-female.png"
+  },
+  "Hollywood Sineması": {
+    "male": "hollywood-sinemasi-male.png",
+    "female": "hollywood-sinemasi-female.png"
+  },
+  "Marvel Comics": {
+    "male": "marvel-comics-male.png",
+    "female": "marvel-comics-female.png"
+  },
+  "Teknoloji": {
+    "male": "teknoloji-male.png",
+    "female": "teknoloji-female.png"
+  },
+  "Hayvanlar": {
+    "male": "hayvanlar-male.png",
+    "female": "hayvanlar-female.png"
+  },
+  "Bitkiler": {
+    "male": "bitkiler-male.png",
+    "female": "bitkiler-female.png"
+  },
+  "Çiçekler": {
+    "male": "cicekler-male.png",
+    "female": "cicekler-female.png"
+  },
+  "Sağlık": {
+    "male": "saglik-male.png",
+    "female": "saglik-female.png"
+  },
+  "Yemekler": {
+    "male": "yemekler-male.png",
+    "female": "yemekler-female.png"
+  },
+  "Trafik": {
+    "male": "trafik-male.png",
+    "female": "trafik-female.png"
+  },
+  "Hukuk": {
+    "male": "hukuk-male.png",
+    "female": "hukuk-female.png"
+  },
+  "Tarım": {
+    "male": "tarim-male.png",
+    "female": "tarim-female.png"
+  },
+  "Astroloji ve Burçlar": {
+    "male": "astroloji-ve-burclar-male.png",
+    "female": "astroloji-ve-burclar-female.png"
+  }
+}
