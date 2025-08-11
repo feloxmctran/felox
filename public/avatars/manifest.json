@@ -71,7 +71,7 @@
     "male": "marvel-comics-male.png",
     "female": "marvel-comics-female.png"
   },
-  "Teknoloji": {
+  "Bilim ve Uzay": {
     "male": "teknoloji-male.png",
     "female": "teknoloji-female.png"
   },
@@ -91,11 +91,11 @@
     "male": "saglik-male.png",
     "female": "saglik-female.png"
   },
-  "Yemekler": {
+  "Dünya Mutfağı": {
     "male": "yemekler-male.png",
     "female": "yemekler-female.png"
   },
-  "Trafik": {
+  "Trafik Kuralları": {
     "male": "trafik-male.png",
     "female": "trafik-female.png"
   },
