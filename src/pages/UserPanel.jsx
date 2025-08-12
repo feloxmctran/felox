@@ -551,23 +551,24 @@ export default function UserPanel() {
   };
 
   /* -------------------- Avatar URL seçimi -------------------- */
-  const getAvatarUrl = () => {
-  const raw = String(user?.cinsiyet ?? "").trim();
+const getAvatarUrl = () => {
+  const s = String(user?.cinsiyet ?? "").trim().toLowerCase();
 
-  // Türkçe karakter/boşluk/küçük-büyük harf normalize
-  const s = raw
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/\p{Diacritic}/gu, ""); // "kadın" -> "kadin"
-
-  let g;
+  let g = "unknown";
   if (s === "erkek") g = "male";
-  else if (s === "kadin") g = "female";
-  else g = "male"; // istersen burada "female" veya "unspecified" yap
+  else if (s === "kadın" || s === "kadin") g = "female";
+
+  // unknown durumunda hangi anahtar varsa ona düş
+  const genderKey =
+    g === "male"
+      ? "male"
+      : g === "female"
+      ? "female"
+      : (avatarManifest?.[bestTitle]?.male ? "male" : "female");
 
   const file =
-    avatarManifest?.[bestTitle]?.[g] ||
-    (g === "male" ? "default-male.png" : "default-female.png");
+    avatarManifest?.[bestTitle]?.[genderKey] ||
+    (genderKey === "male" ? "default-male.png" : "default-female.png");
 
   return `/avatars/${file}`;
 };
