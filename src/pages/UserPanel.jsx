@@ -231,11 +231,21 @@ export default function UserPanel() {
   const [showLevelUpPrompt, setShowLevelUpPrompt] = useState(false);
   const [loadingLevelQuestions, setLoadingLevelQuestions] = useState(false);
 
-  // Cinsiyeti sadece user.cinsiyet değiştiğinde hesapla
+  // --- CİNSİYET: güçlü normalize (erkek/kadın/bay/bayan/male/female vs.) ---
   const gender = useMemo(() => {
-    const s = String(user?.cinsiyet ?? "").trim().toLowerCase();
-    if (s === "erkek") return "male";
-    if (s === "kadın" || s === "kadin") return "female";
+    const raw = String(user?.cinsiyet ?? "")
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/\p{Diacritic}/gu, "")
+      .trim();
+    // erkek / male olasılıkları
+    if (
+      /(^|[\s_-])(erkek|bay|e|m|male|man)([\s_-]|$)/.test(raw)
+    ) return "male";
+    // kadın / female olasılıkları
+    if (
+      /(^|[\s_-])(kadin|bayan|k|f|female|woman)([\s_-]|$)/.test(raw)
+    ) return "female";
     return "unknown";
   }, [user?.cinsiyet]);
 
@@ -300,7 +310,6 @@ export default function UserPanel() {
       .then((d) => {
         if (d?.success && Array.isArray(d.performance) && d.performance.length) {
           setBestTitle(d.performance[0].title || "");
-          // backend score_percent var
           const pct =
             typeof d.performance[0].score_percent === "number"
               ? d.performance[0].score_percent
@@ -335,8 +344,7 @@ export default function UserPanel() {
           const filtered = d.questions.filter(
             (q) => !correctAnswered.includes(q.id)
           );
-          // SIRAYI KARISTIR
-          shuffleInPlace(filtered);
+          shuffleInPlace(filtered); // karıştır
 
           setQuestions(filtered);
           setCurrentIdx(0);
@@ -396,8 +404,7 @@ export default function UserPanel() {
       (q) => !correctAnswered.includes(q.id)
     );
 
-    // SIRAYI KARISTIR
-    shuffleInPlace(filtered);
+    shuffleInPlace(filtered); // karıştır
 
     setQuestions(filtered);
     setCurrentIdx(0);
@@ -425,8 +432,7 @@ export default function UserPanel() {
           );
         }
       }
-      // karıştır
-      shuffleInPlace(all);
+      shuffleInPlace(all); // karıştır
 
       setQuestions(all);
       setCurrentIdx(0);
@@ -564,6 +570,15 @@ export default function UserPanel() {
       .catch(() => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
   };
 
+  /* -------------------- Çıkış -------------------- */
+  const handleLogout = async () => {
+    try {
+      await removeFeloxUser();
+    } finally {
+      window.location.href = "/login";
+    }
+  };
+
   /* -------------------- "Puanlarım" performansını yükle -------------------- */
   const loadMyPerformance = async () => {
     if (!user) return;
@@ -604,19 +619,15 @@ export default function UserPanel() {
       entry = foundKey ? avatarManifest[foundKey] : {};
     }
 
-    let file;
+    // Dosya seçiminde **gender öncelikli** ve **doğru default**:
     if (gender === "male") {
-      // Erkek: başlık altında male varsa onu kullan; yoksa male default
-      file = entry.male || "default-male.png";
-    } else if (gender === "female") {
-      // Kadın: başlık altında female varsa onu kullan; yoksa female default
-      file = entry.female || "default-female.png";
-    } else {
-      // Unknown: neutral > female > male > female default
-      file = entry.neutral || entry.female || entry.male || "default-female.png";
+      return `/avatars/${entry.male || "default-male.png"}`;
     }
-
-    return `/avatars/${file}`;
+    if (gender === "female") {
+      return `/avatars/${entry.female || "default-female.png"}`;
+    }
+    // unknown
+    return `/avatars/${entry.neutral || entry.male || entry.female || "default-male.png"}`;
   };
 
   /* -------------------- Panelde başlık etiketi -------------------- */
@@ -639,9 +650,7 @@ export default function UserPanel() {
     else if (pct <= 80) phrase = `Sen bir ${bestTitle} uzmanısın.`;
     else phrase = `Sen bir ${bestTitle} dehasısın.`;
 
-    return (
-      <div className="text-xs text-gray-700 font-medium">{phrase}</div>
-    );
+    return <div className="text-xs text-gray-700 font-medium">{phrase}</div>;
   };
 
   /* -------------------- Render -------------------- */
@@ -815,7 +824,7 @@ export default function UserPanel() {
           {/* Kademeli: seviye artırım promptu */}
           {showLevelUpPrompt && (
             <div className="fixed inset-0 z-40 bg-black/50 flex items-center justify-center p-3">
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-5 text-center relative">
+              <div className="bg-white rounded-3xl shadow-2xl p-5 w-full max-w-sm text-center relative">
                 <button
                   className="absolute top-2 right-3 text-2xl text-gray-400 hover:text-red-500"
                   onClick={() => setShowLevelUpPrompt(false)}
