@@ -1,5 +1,5 @@
 // src/pages/UserPanel.js
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 
 /* -------------------- Universal User Storage -------------------- */
 async function getFeloxUser() {
