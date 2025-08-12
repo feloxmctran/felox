@@ -216,8 +216,10 @@ export default function UserPanel() {
   const [myPerfLoading, setMyPerfLoading] = useState(false);
   const [myPerfError, setMyPerfError] = useState("");
 
-  // En iyi başlık (avatar için)
+  // En iyi başlık (avatar için) + başarı yüzdesi
   const [bestTitle, setBestTitle] = useState("");
+  const [bestTitlePercent, setBestTitlePercent] = useState(null); // number | null
+
   // Avatar manifest
   const [avatarManifest, setAvatarManifest] = useState(null);
 
@@ -292,17 +294,27 @@ export default function UserPanel() {
         });
     });
 
-    // Avatar için en iyi başlığını çek
+    // Avatar için en iyi başlık ve yüzdesi
     fetch(`${apiUrl}/api/user/${user.id}/performance`)
       .then((r) => r.json())
       .then((d) => {
         if (d?.success && Array.isArray(d.performance) && d.performance.length) {
           setBestTitle(d.performance[0].title || "");
+          // backend score_percent var
+          const pct =
+            typeof d.performance[0].score_percent === "number"
+              ? d.performance[0].score_percent
+              : null;
+          setBestTitlePercent(pct);
         } else {
           setBestTitle("");
+          setBestTitlePercent(null);
         }
       })
-      .catch(() => setBestTitle(""));
+      .catch(() => {
+        setBestTitle("");
+        setBestTitlePercent(null);
+      });
 
     // eslint-disable-next-line
   }, [user]);
@@ -552,12 +564,6 @@ export default function UserPanel() {
       .catch(() => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
   };
 
-  /* -------------------- Çıkış -------------------- */
-  const handleLogout = async () => {
-    await removeFeloxUser();
-    window.location.href = "/login";
-  };
-
   /* -------------------- "Puanlarım" performansını yükle -------------------- */
   const loadMyPerformance = async () => {
     if (!user) return;
@@ -569,7 +575,12 @@ export default function UserPanel() {
       if (data.success) {
         const list = data.performance || [];
         setMyPerf(list);
-        if (list.length) setBestTitle(list[0].title || "");
+        if (list.length) {
+          setBestTitle(list[0].title || "");
+          const pct =
+            typeof list[0].score_percent === "number" ? list[0].score_percent : null;
+          setBestTitlePercent(pct);
+        }
       } else {
         setMyPerfError(data.error || "Veri alınamadı");
       }
@@ -608,6 +619,31 @@ export default function UserPanel() {
     return `/avatars/${file}`;
   };
 
+  /* -------------------- Panelde başlık etiketi -------------------- */
+  const renderBestTitleBadge = () => {
+    if (!bestTitle) {
+      return <div className="text-xs text-gray-400">Henüz en iyi başlık yok</div>;
+    }
+    const pct = typeof bestTitlePercent === "number" ? bestTitlePercent : null;
+    if (pct == null) {
+      // yüzde yoksa eski davranış
+      return (
+        <div className="text-xs text-gray-600">
+          En iyi olduğun başlık: <b className="text-gray-800">{bestTitle}</b>
+        </div>
+      );
+    }
+    // Eşikler: <40 meraklısı | 40..80 uzmanı | >80 dehası
+    let phrase;
+    if (pct < 40) phrase = `Sen bir ${bestTitle} meraklısısın.`;
+    else if (pct <= 80) phrase = `Sen bir ${bestTitle} uzmanısın.`;
+    else phrase = `Sen bir ${bestTitle} dehasısın.`;
+
+    return (
+      <div className="text-xs text-gray-700 font-medium">{phrase}</div>
+    );
+  };
+
   /* -------------------- Render -------------------- */
   if (!user)
     return (
@@ -642,14 +678,10 @@ export default function UserPanel() {
             <h1 className="text-2xl font-extrabold text-cyan-700 text-center">
               {user.ad} {user.soyad}
             </h1>
-            {bestTitle ? (
-              <div className="text-xs text-gray-600">
-                En iyi olduğun başlık:{" "}
-                <b className="text-gray-800">{bestTitle}</b>
-              </div>
-            ) : (
-              <div className="text-xs text-gray-400">Henüz en iyi başlık yok</div>
-            )}
+
+            {/* Başlık etiketi: başarı yüzdesine göre */}
+            {renderBestTitleBadge()}
+
             <div className="w-full flex gap-3 mt-3 flex-wrap">
               <Box title="Puanın" value={totalPoints} />
               <Box title="Cevapladığın" value={answeredCount} />
