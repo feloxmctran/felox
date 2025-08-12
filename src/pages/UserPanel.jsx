@@ -1,4 +1,4 @@
-// src/pages/UserPanel.js
+// src/pages/UserPanel.jsx
 import React, { useState, useEffect, useMemo } from "react";
 
 /* -------------------- Universal User Storage -------------------- */
@@ -42,8 +42,14 @@ const PERIODS = [
   { key: "year", label: "Bu Yıl" },
 ];
 
-/* -------------------- cinsiyet memo (puan kadar) -------------------- */
-
+/* -------------------- Rastgele karıştırma -------------------- */
+function shuffleInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
 
 /* -------------------- Stars (puan kadar) -------------------- */
 const Stars = ({ count = 1 }) => (
@@ -114,15 +120,14 @@ function PointsTable({ show, onClose, loading, error, data }) {
                   <th className="p-2 border">Yanlış</th>
                   <th className="p-2 border">Bilmem</th>
                   <th className="p-2 border">Net Puan</th>
+                  <th className="p-2 border" title="(Doğru / Denenen) × 100">Başarı %</th>
                 </tr>
               </thead>
               <tbody>
                 {data.map((r, i) => (
                   <tr
                     key={r.survey_id || i}
-                    className={
-                      i === 0 ? "bg-green-50" : i === data.length - 1 ? "bg-red-50" : ""
-                    }
+                    className={i === 0 ? "bg-green-50" : i === data.length - 1 ? "bg-red-50" : ""}
                   >
                     <td className="p-2 border text-left">{r.title}</td>
                     <td className="p-2 border text-center">
@@ -141,6 +146,16 @@ function PointsTable({ show, onClose, loading, error, data }) {
                       }`}
                     >
                       {r.net_points}
+                    </td>
+                    <td className="p-2 border text-center font-bold">
+                      {typeof r.score_percent === "number"
+                        ? `${r.score_percent}%`
+                        : (() => {
+                            const den = Number(r.attempted) || 0;
+                            const dogru = Number(r.correct) || 0;
+                            const pct = den > 0 ? Math.round((dogru / den) * 100) : 0;
+                            return `${pct}%`;
+                          })()}
                     </td>
                   </tr>
                 ))}
@@ -233,7 +248,7 @@ export default function UserPanel() {
   /* -------------------- Manifesti yükle -------------------- */
   useEffect(() => {
     fetch("/avatars/manifest.json")
-      .then((r) => r.ok ? r.json() : null)
+      .then((r) => (r.ok ? r.json() : null))
       .then((d) => d && setAvatarManifest(d))
       .catch(() => {});
   }, []);
@@ -308,6 +323,9 @@ export default function UserPanel() {
           const filtered = d.questions.filter(
             (q) => !correctAnswered.includes(q.id)
           );
+          // SIRAYI KARISTIR
+          shuffleInPlace(filtered);
+
           setQuestions(filtered);
           setCurrentIdx(0);
           setMode("solve");
@@ -365,7 +383,10 @@ export default function UserPanel() {
     const filtered = allQuestions.filter(
       (q) => !correctAnswered.includes(q.id)
     );
-    filtered.sort(() => Math.random() - 0.5);
+
+    // SIRAYI KARISTIR
+    shuffleInPlace(filtered);
+
     setQuestions(filtered);
     setCurrentIdx(0);
     setMode("solve");
@@ -393,10 +414,8 @@ export default function UserPanel() {
         }
       }
       // karıştır
-      for (let i = all.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [all[i], all[j]] = [all[j], all[i]];
-      }
+      shuffleInPlace(all);
+
       setQuestions(all);
       setCurrentIdx(0);
       setMode("solve");
@@ -562,30 +581,32 @@ export default function UserPanel() {
   };
 
   /* -------------------- Avatar URL seçimi -------------------- */
-const getAvatarUrl = () => {
-  const normalizedTitle = String(bestTitle || "").trim().toLowerCase();
+  const getAvatarUrl = () => {
+    // bestTitle normalizasyonu (manifest key eşleşmesi için)
+    const normalizedTitle = String(bestTitle || "").trim().toLowerCase();
 
-  let entry = {};
-  if (avatarManifest) {
-    const foundKey = Object.keys(avatarManifest).find(
-      k => k.trim().toLowerCase() === normalizedTitle
-    );
-    entry = foundKey ? avatarManifest[foundKey] : {};
-  }
+    let entry = {};
+    if (avatarManifest) {
+      const foundKey = Object.keys(avatarManifest).find(
+        (k) => k.trim().toLowerCase() === normalizedTitle
+      );
+      entry = foundKey ? avatarManifest[foundKey] : {};
+    }
 
-  let file;
-  if (gender === "male") {
-    file = entry.male || "default-male.png";
-  } else if (gender === "female") {
-    file = entry.female || "default-female.png";
-  } else {
-    file = entry.neutral || entry.female || entry.male || "default-female.png";
-  }
+    let file;
+    if (gender === "male") {
+      // Erkek: başlık altında male varsa onu kullan; yoksa male default
+      file = entry.male || "default-male.png";
+    } else if (gender === "female") {
+      // Kadın: başlık altında female varsa onu kullan; yoksa female default
+      file = entry.female || "default-female.png";
+    } else {
+      // Unknown: neutral > female > male > female default
+      file = entry.neutral || entry.female || entry.male || "default-female.png";
+    }
 
-  return `/avatars/${file}`;
-};
-
-
+    return `/avatars/${file}`;
+  };
 
   /* -------------------- Render -------------------- */
   if (!user)
@@ -922,9 +943,7 @@ const getAvatarUrl = () => {
                         surveyLeaderboard.slice(0, 10).map((u, i) => (
                           <tr
                             key={u.id}
-                            className={
-                              u.id === user.id ? "bg-yellow-100 font-bold" : ""
-                            }
+                            className={u.id === user.id ? "bg-yellow-100 font-bold" : ""}
                           >
                             <td className="p-1 border">{i + 1}</td>
                             <td className="p-1 border">{u.ad}</td>
@@ -934,10 +953,7 @@ const getAvatarUrl = () => {
                         ))
                       ) : (
                         <tr>
-                          <td
-                            colSpan={4}
-                            className="text-gray-400 text-center py-2"
-                          >
+                          <td colSpan={4} className="text-gray-400 text-center py-2">
                             Veri yok.
                           </td>
                         </tr>
