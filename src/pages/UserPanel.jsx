@@ -552,26 +552,34 @@ export default function UserPanel() {
 
   /* -------------------- Avatar URL seçimi -------------------- */
 const getAvatarUrl = () => {
+  // cinsiyeti sağlamca çöz
   const s = String(user?.cinsiyet ?? "").trim().toLowerCase();
+  const gender =
+    s === "erkek" ? "male" :
+    (s === "kadın" || s === "kadin") ? "female" :
+    "unknown";
 
-  let g = "unknown";
-  if (s === "erkek") g = "male";
-  else if (s === "kadın" || s === "kadin") g = "female";
+  const title = bestTitle || ""; // başlık olmayabilir
+  const entry = avatarManifest?.[title] || {}; // o başlığın manifest satırı
 
-  // unknown durumunda hangi anahtar varsa ona düş
-  const genderKey =
-    g === "male"
-      ? "male"
-      : g === "female"
-      ? "female"
-      : (avatarManifest?.[bestTitle]?.male ? "male" : "female");
+  let file;
 
-  const file =
-    avatarManifest?.[bestTitle]?.[genderKey] ||
-    (genderKey === "male" ? "default-male.png" : "default-female.png");
+  if (gender === "male") {
+    // 1) başlık altında male varsa onu kullan
+    // 2) yoksa male default'a düş
+    file = entry.male || "default-male.png";
+  } else if (gender === "female") {
+    // 1) başlık altında female varsa onu kullan
+    // 2) yoksa female default'a düş
+    file = entry.female || "default-female.png";
+  } else {
+    // cinsiyet bilinmiyorsa: varsa neutral, yoksa sırayla male/female, en sonda female default
+    file = entry.neutral || entry.male || entry.female || "default-female.png";
+  }
 
   return `/avatars/${file}`;
 };
+
 
 
   /* -------------------- Render -------------------- */
