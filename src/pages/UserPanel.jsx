@@ -42,6 +42,9 @@ const PERIODS = [
   { key: "year", label: "Bu Yıl" },
 ];
 
+/* -------------------- cinsiyet memo (puan kadar) -------------------- */
+
+
 /* -------------------- Stars (puan kadar) -------------------- */
 const Stars = ({ count = 1 }) => (
   <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
@@ -210,6 +213,14 @@ export default function UserPanel() {
   const [ladderCorrect, setLadderCorrect] = useState(0);
   const [showLevelUpPrompt, setShowLevelUpPrompt] = useState(false);
   const [loadingLevelQuestions, setLoadingLevelQuestions] = useState(false);
+
+  // Cinsiyeti sadece user.cinsiyet değiştiğinde hesapla
+  const gender = useMemo(() => {
+    const s = String(user?.cinsiyet ?? "").trim().toLowerCase();
+    if (s === "erkek") return "male";
+    if (s === "kadın" || s === "kadin") return "female";
+    return "unknown";
+  }, [user?.cinsiyet]);
 
   /* -------------------- Kullanıcıyı yükle -------------------- */
   useEffect(() => {
@@ -552,29 +563,23 @@ export default function UserPanel() {
 
   /* -------------------- Avatar URL seçimi -------------------- */
 const getAvatarUrl = () => {
-  // cinsiyeti sağlamca çöz
-  const s = String(user?.cinsiyet ?? "").trim().toLowerCase();
-  const gender =
-    s === "erkek" ? "male" :
-    (s === "kadın" || s === "kadin") ? "female" :
-    "unknown";
+  const normalizedTitle = String(bestTitle || "").trim().toLowerCase();
 
-  const title = bestTitle || ""; // başlık olmayabilir
-  const entry = avatarManifest?.[title] || {}; // o başlığın manifest satırı
+  let entry = {};
+  if (avatarManifest) {
+    const foundKey = Object.keys(avatarManifest).find(
+      k => k.trim().toLowerCase() === normalizedTitle
+    );
+    entry = foundKey ? avatarManifest[foundKey] : {};
+  }
 
   let file;
-
   if (gender === "male") {
-    // 1) başlık altında male varsa onu kullan
-    // 2) yoksa male default'a düş
     file = entry.male || "default-male.png";
   } else if (gender === "female") {
-    // 1) başlık altında female varsa onu kullan
-    // 2) yoksa female default'a düş
     file = entry.female || "default-female.png";
   } else {
-    // cinsiyet bilinmiyorsa: varsa neutral, yoksa sırayla male/female, en sonda female default
-    file = entry.neutral || entry.male || entry.female || "default-female.png";
+    file = entry.neutral || entry.female || entry.male || "default-female.png";
   }
 
   return `/avatars/${file}`;
