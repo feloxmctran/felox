@@ -231,21 +231,25 @@ export default function UserPanel() {
   const [showLevelUpPrompt, setShowLevelUpPrompt] = useState(false);
   const [loadingLevelQuestions, setLoadingLevelQuestions] = useState(false);
 
-  // --- CİNSİYET: güçlü normalize (erkek/kadın/bay/bayan/male/female vs.) ---
+  // --- CİNSİYET: güçlü normalize (TR harfleri için özel map) ---
   const gender = useMemo(() => {
     const raw = String(user?.cinsiyet ?? "")
       .toLowerCase()
+      .trim()
       .normalize("NFKD")
-      .replace(/\p{Diacritic}/gu, "")
-      .trim();
-    // erkek / male olasılıkları
-    if (
-      /(^|[\s_-])(erkek|bay|e|m|male|man)([\s_-]|$)/.test(raw)
-    ) return "male";
-    // kadın / female olasılıkları
-    if (
-      /(^|[\s_-])(kadin|bayan|k|f|female|woman)([\s_-]|$)/.test(raw)
-    ) return "female";
+      .replace(/\p{Diacritic}/gu, "");
+    const s = raw
+      .replace(/ı/g, "i")
+      .replace(/i̇/g, "i")
+      .replace(/ş/g, "s")
+      .replace(/ğ/g, "g")
+      .replace(/ç/g, "c")
+      .replace(/ö/g, "o")
+      .replace(/ü/g, "u")
+      .replace(/â/g, "a");
+
+    if (/(^|[\s_/.-])(erkek|bay|male|man)([\s_/.-]|$)/.test(s)) return "male";
+    if (/(^|[\s_/.-])(kadin|bayan|female|woman)([\s_/.-]|$)/.test(s)) return "female";
     return "unknown";
   }, [user?.cinsiyet]);
 
@@ -369,7 +373,7 @@ export default function UserPanel() {
     } catch (e) {
       setSurveyLeaderboard([]);
     } finally {
-      setSurveyLoading(false);
+           setSurveyLoading(false);
     }
   };
 
@@ -619,15 +623,15 @@ export default function UserPanel() {
       entry = foundKey ? avatarManifest[foundKey] : {};
     }
 
-    // Dosya seçiminde **gender öncelikli** ve **doğru default**:
+    // Dosya seçiminde gender öncelikli ve doğru default:
     if (gender === "male") {
       return `/avatars/${entry.male || "default-male.png"}`;
     }
     if (gender === "female") {
       return `/avatars/${entry.female || "default-female.png"}`;
     }
-    // unknown
-    return `/avatars/${entry.neutral || entry.male || entry.female || "default-male.png"}`;
+    // unknown → neutral > female > male > default-female (kadın ağırlıklı)
+    return `/avatars/${entry.neutral || entry.female || entry.male || "default-female.png"}`;
   };
 
   /* -------------------- Panelde başlık etiketi -------------------- */
