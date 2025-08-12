@@ -7,10 +7,6 @@
     "male": "dunya-tarihi-male.png",
     "female": "dunya-tarihi-female.png"
   },
-  "Ülke başkentleri": {
-    "male": "ulke-baskentleri-male.png",
-    "female": "ulke-baskentleri-female.png"
-  },
   "Türkiye Coğrafyası": {
     "male": "turkiye-cografyasi-male.png",
     "female": "turkiye-cografyasi-female.png"
@@ -30,6 +26,10 @@
   "Dünya masalları": {
     "male": "dunya-masallari-male.png",
     "female": "dunya-masallari-female.png"
+  },
+  "İmla Kuralları": {
+    "male": "imla-kurallari-male.png",
+    "female": "imla-kurallari-female.png"
   },
   "Türkiye Süper Lig": {
     "male": "turkiye-super-lig-male.png",
@@ -51,9 +51,9 @@
     "male": "turkce-muzik-male.png",
     "female": "turkce-muzik-female.png"
   },
-  "Yabancı Müzik": {
-    "male": "yabanci-muzik-male.png",
-    "female": "yabanci-muzik-female.png"
+  "Dünya Müzikleri": {
+    "male": "dunya-muzikleri-male.png",
+    "female": "dunya-muzikleri-female.png"
   },
   "Türk Sineması": {
     "male": "turk-sinemasi-male.png",
@@ -71,9 +71,13 @@
     "male": "marvel-comics-male.png",
     "female": "marvel-comics-female.png"
   },
-  "Bilim ve Uzay": {
+  "Teknoloji": {
     "male": "teknoloji-male.png",
     "female": "teknoloji-female.png"
+  },
+  "Bilim ve Uzay": {
+    "male": "bilim-ve-uzay-male.png",
+    "female": "bilim-ve-uzay-female.png"
   },
   "Hayvanlar": {
     "male": "hayvanlar-male.png",
@@ -90,6 +94,10 @@
   "Sağlık": {
     "male": "saglik-male.png",
     "female": "saglik-female.png"
+  },
+  "Türk Mutfağı": {
+    "male": "turk-mutfagi-male.png",
+    "female": "turk-mutfagi-female.png"
   },
   "Dünya Mutfağı": {
     "male": "yemekler-male.png",
