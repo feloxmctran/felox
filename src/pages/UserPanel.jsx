@@ -176,6 +176,10 @@ export default function UserPanel() {
   const [totalPoints, setTotalPoints] = useState(0);
   const [answeredCount, setAnsweredCount] = useState(0);
 
+  // BUGÜN sıralaması (panelde 3. kutu için)
+  const [todayRank, setTodayRank] = useState(null);
+  const [todayRankLoading, setTodayRankLoading] = useState(false);
+
   // Görünüm modu
   const [mode, setMode] = useState("panel"); // panel | list | solve | thankyou | genius
 
@@ -231,10 +235,23 @@ export default function UserPanel() {
   const [showLevelUpPrompt, setShowLevelUpPrompt] = useState(false);
   const [loadingLevelQuestions, setLoadingLevelQuestions] = useState(false);
 
-  // Rastgele söz (quote)
+  // TEŞEKKÜRLER ekranı için alıntı
   const [quote, setQuote] = useState(null); // { text, author } | null
   const [quoteLoading, setQuoteLoading] = useState(false);
-  const [quoteError, setQuoteError] = useState("");
+
+  const fetchRandomQuote = async () => {
+    setQuoteLoading(true);
+    try {
+      const r = await fetch(`${apiUrl}/api/quotes/random`);
+      const d = await r.json();
+      if (d?.text) setQuote({ text: d.text, author: d.author || "" });
+      else setQuote(null);
+    } catch {
+      setQuote(null);
+    } finally {
+      setQuoteLoading(false);
+    }
+  };
 
   // --- CİNSİYET: güçlü normalize (TR harfleri için özel map) ---
   const gender = useMemo(() => {
@@ -301,6 +318,14 @@ export default function UserPanel() {
         }
       });
 
+    // BUGÜN sıralaması
+    setTodayRankLoading(true);
+    fetch(`${apiUrl}/api/user/${user.id}/rank?period=today`)
+      .then((r) => r.json())
+      .then((d) => setTodayRank(d?.success ? d.rank : null))
+      .catch(() => setTodayRank(null))
+      .finally(() => setTodayRankLoading(false));
+
     // Genel puan tabloları
     PERIODS.forEach((p) => {
       fetch(`${apiUrl}/api/leaderboard?period=${p.key}`)
@@ -337,24 +362,9 @@ export default function UserPanel() {
     // eslint-disable-next-line
   }, [user]);
 
-  /* -------------------- TEŞEKKÜRLER ekranında quote çek -------------------- */
+  // thankyou moduna her girişte yeni söz çek
   useEffect(() => {
-    if (mode !== "thankyou") return;
-    setQuote(null);
-    setQuoteError("");
-    setQuoteLoading(true);
-
-    fetch(`${apiUrl}/api/quotes/random`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d && d.text) {
-          setQuote({ text: d.text, author: d.author || "" });
-        } else {
-          setQuoteError(d?.error || "Söz bulunamadı.");
-        }
-      })
-      .catch(() => setQuoteError("Bağlantı hatası."))
-      .finally(() => setQuoteLoading(false));
+    if (mode === "thankyou") fetchRandomQuote();
   }, [mode]);
 
   /* -------------------- Kategorileri (onaylı) çek -------------------- */
@@ -528,6 +538,15 @@ export default function UserPanel() {
       setTotalPoints(data.totalPoints);
       setAnsweredCount(data.answeredCount);
     }
+    // Bugün sıralamasını da tazele
+    try {
+      const d = await fetch(`${apiUrl}/api/user/${user.id}/rank?period=today`).then((x) =>
+        x.json()
+      );
+      setTodayRank(d?.success ? d.rank : null);
+    } catch {
+      /* yoksun */
+    }
   };
 
   const handleAnswer = (cevap) => {
@@ -576,7 +595,7 @@ export default function UserPanel() {
               setCorrectAnswered((prev) => [...prev, q.id]);
             }
 
-            // kullanıcı üst bilgi tazele
+            // kullanıcı üst bilgi tazele (ve bugün sıralaması)
             refreshUserStats();
 
             if (currentIdx < questions.length - 1) {
@@ -675,7 +694,9 @@ export default function UserPanel() {
       );
     }
 
-    // <40 → iyisin | 40..80 → uzmansın | >80 → dehasın
+    // <40  → "sen {title} konusunda iyisin."
+    // 40..80 → "sen {title} konusunda bir uzmansın."
+    // >80  → "sen {title} konusunda bir dehasın."
     const titleForSentence = String(bestTitle).toLocaleLowerCase("tr-TR");
     let phrase;
     if (pct < 40) {
@@ -699,10 +720,14 @@ export default function UserPanel() {
 
   /* -------------------- PANEL -------------------- */
   if (mode === "panel") {
-    const Box = ({ title, value }) => (
-      <div className="flex-1 min-w-[42%] bg-white/80 rounded-2xl shadow p-4 text-center">
+    // Box artık opsiyonel "caption" destekliyor
+    const Box = ({ title, value, caption }) => (
+      <div className="flex-1 min-w-[30%] bg-white/80 rounded-2xl shadow p-4 text-center h-[91px]">
         <div className="text-xs text-gray-500 mb-1">{title}</div>
         <div className="text-2xl font-extrabold text-emerald-700">{value}</div>
+        {caption ? (
+          <div className="text-[11px] text-gray-500 mt-0.5">{caption}</div>
+        ) : null}
       </div>
     );
 
@@ -710,14 +735,14 @@ export default function UserPanel() {
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
           <div className="flex flex-col items-center gap-2">
-            {/* Avatar */}
+            {/* Avatar (%20 büyütüldü) */}
             <div className="rounded-full bg-gray-100 p-1 shadow-md mb-2">
               <img
                 src={getAvatarUrl()}
                 alt="avatar"
-                width={96}
-                height={96}
-                className="w-24 h-24 rounded-full object-contain"
+                width={140}
+                height={140}
+                className="w-[140px] h-[140px] rounded-full object-contain"
               />
             </div>
             <h1 className="text-2xl font-extrabold text-cyan-700 text-center">
@@ -730,6 +755,17 @@ export default function UserPanel() {
             <div className="w-full flex gap-3 mt-3 flex-wrap">
               <Box title="Puanın" value={totalPoints} />
               <Box title="Cevapladığın" value={answeredCount} />
+              <Box
+                title="Bugün"
+                value={
+                  todayRankLoading
+                    ? "—"
+                    : todayRank != null
+                    ? `${todayRank}.`
+                    : "-"
+                }
+                caption={todayRankLoading ? "" : "sıradasın"}
+              />
             </div>
           </div>
 
@@ -1143,24 +1179,26 @@ export default function UserPanel() {
             Yine bekleriz! Dilediğin zaman yeni sorular çözebilirsin.
           </p>
 
-          {/* Rastgele söz */}
-          <div className="border-t border-gray-200 pt-4 mt-2 min-h-[64px]">
+          {/* Rastgele alıntı (başlıksız, yenile butonu yok) */}
+          <div className="mt-1 p-4 rounded-2xl bg-emerald-50 border border-emerald-100">
             {quoteLoading ? (
-              <div className="text-sm text-gray-500">Rastgele söz getiriliyor…</div>
-            ) : quoteError ? (
-              <div className="text-sm text-gray-400">{quoteError}</div>
+              <div className="text-sm text-gray-500">Yükleniyor…</div>
             ) : quote ? (
-              <div className="text-base italic text-gray-800">
-                “{quote.text}”
+              <>
+                <div className="text-sm text-gray-700 italic">“{quote.text}”</div>
                 {quote.author ? (
-                  <div className="mt-1 text-sm not-italic text-gray-500">— {quote.author}</div>
+                  <div className="text-[11px] text-gray-500 mt-1">— {quote.author}</div>
                 ) : null}
+              </>
+            ) : (
+              <div className="text-sm text-gray-500 italic">
+                “Bugün için bir söz bulunamadı.”
               </div>
-            ) : null}
+            )}
           </div>
 
           <button
-            className="mt-6 px-4 py-2 bg-cyan-600 text-white rounded-2xl hover:bg-cyan-800"
+            className="mt-4 px-4 py-2 bg-cyan-600 text-white rounded-2xl hover:bg-cyan-800"
             onClick={() => setMode("panel")}
           >
             Panele Dön
