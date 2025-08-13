@@ -231,6 +231,11 @@ export default function UserPanel() {
   const [showLevelUpPrompt, setShowLevelUpPrompt] = useState(false);
   const [loadingLevelQuestions, setLoadingLevelQuestions] = useState(false);
 
+  // Rastgele söz (quote)
+  const [quote, setQuote] = useState(null); // { text, author } | null
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState("");
+
   // --- CİNSİYET: güçlü normalize (TR harfleri için özel map) ---
   const gender = useMemo(() => {
     const raw = String(user?.cinsiyet ?? "")
@@ -332,6 +337,26 @@ export default function UserPanel() {
     // eslint-disable-next-line
   }, [user]);
 
+  /* -------------------- TEŞEKKÜRLER ekranında quote çek -------------------- */
+  useEffect(() => {
+    if (mode !== "thankyou") return;
+    setQuote(null);
+    setQuoteError("");
+    setQuoteLoading(true);
+
+    fetch(`${apiUrl}/api/quotes/random`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && d.text) {
+          setQuote({ text: d.text, author: d.author || "" });
+        } else {
+          setQuoteError(d?.error || "Söz bulunamadı.");
+        }
+      })
+      .catch(() => setQuoteError("Bağlantı hatası."))
+      .finally(() => setQuoteLoading(false));
+  }, [mode]);
+
   /* -------------------- Kategorileri (onaylı) çek -------------------- */
   const fetchSurveys = () => {
     fetch(`${apiUrl}/api/user/approved-surveys`)
@@ -373,7 +398,7 @@ export default function UserPanel() {
     } catch (e) {
       setSurveyLeaderboard([]);
     } finally {
-           setSurveyLoading(false);
+      setSurveyLoading(false);
     }
   };
 
@@ -639,20 +664,27 @@ export default function UserPanel() {
     if (!bestTitle) {
       return <div className="text-xs text-gray-400">Henüz en iyi başlık yok</div>;
     }
+
     const pct = typeof bestTitlePercent === "number" ? bestTitlePercent : null;
+    // Başarı yüzdesi yoksa eski metin
     if (pct == null) {
-      // yüzde yoksa eski davranış
       return (
         <div className="text-xs text-gray-600">
           En iyi olduğun başlık: <b className="text-gray-800">{bestTitle}</b>
         </div>
       );
     }
-    // Eşikler: <40 meraklısı | 40..80 uzmanı | >80 dehası
+
+    // <40 → iyisin | 40..80 → uzmansın | >80 → dehasın
+    const titleForSentence = String(bestTitle).toLocaleLowerCase("tr-TR");
     let phrase;
-    if (pct < 40) phrase = `Sen bir ${bestTitle} meraklısısın.`;
-    else if (pct <= 80) phrase = `Sen bir ${bestTitle} uzmanısın.`;
-    else phrase = `Sen bir ${bestTitle} dehasısın.`;
+    if (pct < 40) {
+      phrase = `sen ${titleForSentence} konusunda iyisin.`;
+    } else if (pct <= 80) {
+      phrase = `sen ${titleForSentence} konusunda bir uzmansın.`;
+    } else {
+      phrase = `sen ${titleForSentence} konusunda bir dehasın.`;
+    }
 
     return <div className="text-xs text-gray-700 font-medium">{phrase}</div>;
   };
@@ -1110,8 +1142,25 @@ export default function UserPanel() {
           <p className="text-lg text-gray-700 mb-4">
             Yine bekleriz! Dilediğin zaman yeni sorular çözebilirsin.
           </p>
+
+          {/* Rastgele söz */}
+          <div className="border-t border-gray-200 pt-4 mt-2 min-h-[64px]">
+            {quoteLoading ? (
+              <div className="text-sm text-gray-500">Rastgele söz getiriliyor…</div>
+            ) : quoteError ? (
+              <div className="text-sm text-gray-400">{quoteError}</div>
+            ) : quote ? (
+              <div className="text-base italic text-gray-800">
+                “{quote.text}”
+                {quote.author ? (
+                  <div className="mt-1 text-sm not-italic text-gray-500">— {quote.author}</div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
           <button
-            className="px-4 py-2 bg-cyan-600 text-white rounded-2xl hover:bg-cyan-800"
+            className="mt-6 px-4 py-2 bg-cyan-600 text-white rounded-2xl hover:bg-cyan-800"
             onClick={() => setMode("panel")}
           >
             Panele Dön
