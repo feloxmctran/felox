@@ -1,4 +1,3 @@
-// src/pages/UserPanel.jsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
 
 /* -------------------- Universal User Storage -------------------- */
@@ -85,22 +84,23 @@ const Stars = ({ count = 1 }) => (
 );
 
 /* -------------------- Küçük yardımcı UI bileşenleri -------------------- */
-const STATUS_COLORS = {
+const COLOR_CLASSES = {
   emerald: "bg-emerald-50 text-emerald-700",
   blue: "bg-blue-50 text-blue-700",
-  gray: "bg-gray-100 text-gray-700",
-  red: "bg-red-50 text-red-700",
   orange: "bg-orange-50 text-orange-700",
+  red: "bg-red-50 text-red-700",
+  purple: "bg-purple-50 text-purple-700",
+  gray: "bg-gray-100 text-gray-700",
 };
-const StatusBadge = ({ text, color = "emerald" }) => (
-  <span
-    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-      STATUS_COLORS[color] || STATUS_COLORS.emerald
-    }`}
-  >
-    {text}
-  </span>
-);
+
+const StatusBadge = ({ text, color = "emerald" }) => {
+  const cls = COLOR_CLASSES[color] || COLOR_CLASSES.emerald;
+  return (
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${cls}`}>
+      {text}
+    </span>
+  );
+};
 
 const StatCard = ({ label, children }) => (
   <div className="flex-1 min-w-[30%] bg-white/80 rounded-2xl shadow p-4 text-center h-[91px]">
@@ -232,7 +232,6 @@ export default function UserPanel() {
   const [feedbackActive, setFeedbackActive] = useState(false);
   const [showStars, setShowStars] = useState(false);
   const [starsCount, setStarsCount] = useState(1);
-  const feedbackTimeoutRef = useRef(null);
 
   // Puanlarım (performans)
   const [showMyPerf, setShowMyPerf] = useState(false);
@@ -266,7 +265,19 @@ export default function UserPanel() {
   const [dailyLoading, setDailyLoading] = useState(false);
   const [dailyError, setDailyError] = useState("");
   const [dailyPoints, setDailyPoints] = useState(0);
-  const [dailyLeaderboard, setDailyLeaderboard] = useState([]); // <-- YENİ
+
+  // Günlük Puan Durumu (Leaderboard)
+  const [dailyLeaderboard, setDailyLeaderboard] = useState([]);
+
+  // Güvenli setState için
+  const feedbackTimeoutRef = useRef(null);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    };
+  }, []);
 
   /* -------------------- Yardımcılar -------------------- */
   const fetchRandomQuote = async () => {
@@ -274,11 +285,14 @@ export default function UserPanel() {
     try {
       const r = await fetch(`${apiUrl}/api/quotes/random`);
       const d = await r.json();
+      if (!isMountedRef.current) return;
       if (d?.text) setQuote({ text: d.text, author: d.author || "" });
       else setQuote(null);
     } catch {
+      if (!isMountedRef.current) return;
       setQuote(null);
     } finally {
+      if (!isMountedRef.current) return;
       setQuoteLoading(false);
     }
   };
@@ -328,6 +342,7 @@ export default function UserPanel() {
     fetch(`${apiUrl}/api/user/${user.id}/answers`)
       .then((res) => res.json())
       .then((data) => {
+        if (!isMountedRef.current) return;
         if (data.success) {
           setCorrectAnswered(
             data.answers
@@ -341,6 +356,7 @@ export default function UserPanel() {
     fetch(`${apiUrl}/api/user/${user.id}/total-points`)
       .then((res) => res.json())
       .then((data) => {
+        if (!isMountedRef.current) return;
         if (data.success) {
           setTotalPoints(data.totalPoints);
           setAnsweredCount(data.answeredCount);
@@ -351,15 +367,25 @@ export default function UserPanel() {
     setTodayRankLoading(true);
     fetch(`${apiUrl}/api/user/${user.id}/rank?period=today`)
       .then((r) => r.json())
-      .then((d) => setTodayRank(d?.success ? d.rank : null))
-      .catch(() => setTodayRank(null))
-      .finally(() => setTodayRankLoading(false));
+      .then((d) => {
+        if (!isMountedRef.current) return;
+        setTodayRank(d?.success ? d.rank : null);
+      })
+      .catch(() => {
+        if (!isMountedRef.current) return;
+        setTodayRank(null);
+      })
+      .finally(() => {
+        if (!isMountedRef.current) return;
+        setTodayRankLoading(false);
+      });
 
     // Genel puan tabloları (ön doldurma)
     PERIODS.forEach((p) => {
       fetch(`${apiUrl}/api/leaderboard?period=${p.key}`)
         .then((res) => res.json())
         .then((data) => {
+          if (!isMountedRef.current) return;
           const filtered = (data.leaderboard || []).filter(
             (u) => (u.total_points || 0) > 0
           );
@@ -371,6 +397,7 @@ export default function UserPanel() {
     fetch(`${apiUrl}/api/user/${user.id}/performance`)
       .then((r) => r.json())
       .then((d) => {
+        if (!isMountedRef.current) return;
         if (d?.success && Array.isArray(d.performance) && d.performance.length) {
           setBestTitle(d.performance[0].title || "");
           const pct =
@@ -384,6 +411,7 @@ export default function UserPanel() {
         }
       })
       .catch(() => {
+        if (!isMountedRef.current) return;
         setBestTitle("");
         setBestTitlePercent(null);
       });
@@ -399,6 +427,23 @@ export default function UserPanel() {
     if (mode === "thankyou") fetchRandomQuote();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
+
+  /* -------------------- Günlük Puan Durumu -------------------- */
+  const fetchDailyLeaderboard = async (dayKey) => {
+    try {
+      const r = await fetch(`${apiUrl}/api/daily/leaderboard?day=${encodeURIComponent(dayKey)}`);
+      const d = await r.json();
+      if (!isMountedRef.current) return;
+      if (d?.success && Array.isArray(d.leaderboard)) {
+        setDailyLeaderboard(d.leaderboard.filter(Boolean));
+      } else {
+        setDailyLeaderboard([]);
+      }
+    } catch {
+      if (!isMountedRef.current) return;
+      setDailyLeaderboard([]);
+    }
+  };
 
   /* -------------------- Rastgele soru (serbest) -------------------- */
   const startRandom = async () => {
@@ -428,21 +473,18 @@ export default function UserPanel() {
   const loadLevelQuestions = async (level) => {
     setLoadingLevelQuestions(true);
     try {
-      const res = await fetch(
-        `${apiUrl}/api/user/${user.id}/kademeli-questions?point=${level}&limit=200`
+      // backend’ten hızlı/tekrarsız al
+      const r = await fetch(
+        `${apiUrl}/api/user/${user.id}/kademeli-questions?point=${level}`
       );
-      const data = await res.json();
-      if (data.success) {
-        setQuestions(data.questions || []);
-        setCurrentIdx(0);
-        setMode("solve");
-        setLadderActive(true);
-        setDailyActive(false);
-      } else {
-        setInfo("Kademeli sorular alınamadı.");
-      }
-    } catch {
-      setInfo("Kademeli sorular alınamadı! (İletişim hatası)");
+      const d = await r.json();
+      const all = Array.isArray(d?.questions) ? d.questions : [];
+
+      setQuestions(all);
+      setCurrentIdx(0);
+      setMode("solve");
+      setLadderActive(true);
+      setDailyActive(false);
     } finally {
       setLoadingLevelQuestions(false);
     }
@@ -455,35 +497,23 @@ export default function UserPanel() {
     await loadLevelQuestions(1);
   };
 
-  const checkLadderProgress = () => {
-    if (ladderAttempts >= 100) {
-      const acc = ladderAttempts > 0 ? ladderCorrect / ladderAttempts : 0;
-      if (acc >= 0.8) {
-        if (ladderLevel < 10) {
-          setShowLevelUpPrompt(true);
-        } else {
-          setMode("genius");
-          setLadderActive(false);
-        }
-      }
-    }
-  };
-
-  const checkLadderProgressServer = async (point) => {
+  const checkLadderProgress = async () => {
     try {
       const r = await fetch(
-        `${apiUrl}/api/user/${user.id}/kademeli-next?point=${point}`
+        `${apiUrl}/api/user/${user.id}/kademeli-next?point=${ladderLevel}`
       );
       const d = await r.json();
-      if (d?.success) {
+      if (!isMountedRef.current) return;
+      if (d?.success && d.can_level_up) {
         if (d.status === "genius") {
           setMode("genius");
           setLadderActive(false);
-        } else if (d.can_level_up && d.next_point && d.next_point > point) {
-          setShowLevelUpPrompt(true);
-        } else {
-          await loadLevelQuestions(point);
+          return;
         }
+        setShowLevelUpPrompt(true);
+      } else {
+        // aynı levelde devam soruları
+        await loadLevelQuestions(ladderLevel);
       }
     } catch {
       // sessiz
@@ -496,24 +526,13 @@ export default function UserPanel() {
     try {
       const r = await fetch(`${apiUrl}/api/daily/leaderboard?day=${encodeURIComponent(dayKey)}`);
       const d = await r.json();
+      if (!isMountedRef.current) return;
       if (d?.success && Array.isArray(d.leaderboard)) {
         const me = d.leaderboard.find((u) => String(u.id) === String(user.id));
         setDailyPoints(me?.total_points || 0);
       }
-    } catch {}
-  }
-
-  async function fetchDailyLeaderboard(dayKey) {
-    try {
-      const r = await fetch(`${apiUrl}/api/daily/leaderboard?day=${encodeURIComponent(dayKey)}`);
-      const d = await r.json();
-      if (d?.success && Array.isArray(d.leaderboard)) {
-        setDailyLeaderboard(d.leaderboard);
-      } else {
-        setDailyLeaderboard([]);
-      }
     } catch {
-      setDailyLeaderboard([]);
+      /* sessizce geç */
     }
   }
 
@@ -522,16 +541,18 @@ export default function UserPanel() {
     try {
       const r = await fetch(`${apiUrl}/api/daily/status?user_id=${user.id}`);
       const d = await r.json();
+      if (!isMountedRef.current) return;
       if (d?.success) {
         setDailyStatus(d);
         if (d.day_key) {
           fetchMyDailyPoints(d.day_key);
-          fetchDailyLeaderboard(d.day_key); // <-- YENİ
+          fetchDailyLeaderboard(d.day_key); // tabloyu getir
         }
       } else {
         setDailyStatus(null);
       }
     } catch {
+      if (!isMountedRef.current) return;
       setDailyStatus(null);
     }
   }
@@ -543,6 +564,7 @@ export default function UserPanel() {
     try {
       const r = await fetch(`${apiUrl}/api/daily/status?user_id=${user.id}`);
       const d = await r.json();
+      if (!isMountedRef.current) return;
       if (d?.success && !d.finished && d.question) {
         setDailyQuestion(d.question);
         setMode("dailySolve");
@@ -554,8 +576,10 @@ export default function UserPanel() {
         setDailyError(d?.error || "Yarışma bilgisi alınamadı.");
       }
     } catch (e) {
+      if (!isMountedRef.current) return;
       setDailyError("Sunucuya ulaşılamadı. Lütfen tekrar deneyin.");
     } finally {
+      if (!isMountedRef.current) return;
       setDailyLoading(false);
     }
   }
@@ -569,7 +593,8 @@ export default function UserPanel() {
       setTimeLeft(24);
       setTimerActive(true);
     }
-  }, [currentIdx, mode, questions, dailyQuestion]); // eslint-disable-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIdx, mode, questions, dailyQuestion]);
 
   useEffect(() => {
     if (timerActive && timeLeft > 0) {
@@ -580,7 +605,8 @@ export default function UserPanel() {
       setTimerActive(false);
       handleAnswer("bilmem");
     }
-  }, [timeLeft, timerActive]); // eslint-disable-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLeft, timerActive]);
 
   /* -------------------- Cevap işle -------------------- */
   const getSuccessMsg = (puan) => {
@@ -649,11 +675,14 @@ export default function UserPanel() {
 
           if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
           feedbackTimeoutRef.current = setTimeout(async () => {
+            if (!isMountedRef.current) return;
             setFeedbackActive(false);
             setShowStars(false);
 
             const r2 = await fetch(`${apiUrl}/api/daily/status?user_id=${user.id}`);
             const nx = await r2.json();
+
+            if (!isMountedRef.current) return;
 
             if (nx?.success && !nx.finished && nx.question) {
               setDailyQuestion(nx.question);
@@ -699,7 +728,7 @@ export default function UserPanel() {
           } else msg = "BİLEMEDİN";
 
           setFeedback(msg);
-          setStarsCount(starCount);
+          setStarsCount(stars ? Math.max(1, Math.min(q.point || 1, 10)) : 1);
           setShowStars(stars && d.is_correct === 1);
           setFeedbackActive(true);
 
@@ -709,7 +738,8 @@ export default function UserPanel() {
           }
 
           if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
-          feedbackTimeoutRef.current = setTimeout(() => {
+          feedbackTimeoutRef.current = setTimeout(async () => {
+            if (!isMountedRef.current) return;
             setFeedbackActive(false);
             setShowStars(false);
 
@@ -723,7 +753,7 @@ export default function UserPanel() {
               setCurrentIdx((prev) => prev + 1);
             } else {
               if (ladderActive) {
-                checkLadderProgressServer(ladderLevel);
+                await checkLadderProgress();
               } else {
                 setMode("thankyou");
               }
@@ -736,10 +766,11 @@ export default function UserPanel() {
       .catch(() => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
   };
 
-  const skipDaily = async () => {
-    if (!user || !dailyQuestion) return;
+  /* --- Günlük: Şimdilik bu kadar (skip endpoint) --- */
+  const handleDailySkip = async () => {
     try {
-      const r = await fetch(`${apiUrl}/api/daily/skip`, {
+      if (!dailyQuestion) return;
+      await fetch(`${apiUrl}/api/daily/skip`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -749,13 +780,10 @@ export default function UserPanel() {
           max_time_seconds: 24,
         }),
       });
-      await r.json();
-      await fetchDailyStatus();
-      setDailyActive(false);
-      setMode("today");
-    } catch {
-      setInfo("Atlama (skip) başarısız oldu.");
-    }
+    } catch {}
+    await fetchDailyStatus();
+    setDailyActive(false);
+    setMode("today");
   };
 
   /* -------------------- Çıkış -------------------- */
@@ -860,16 +888,8 @@ export default function UserPanel() {
     if (showLeaderboard) {
       fetchLeaderboard(activePeriod);
     }
-  }, [activePeriod, showLeaderboard]); // eslint-disable-line
-
-  /* --- Unmount temizliği --- */
-  useEffect(() => {
-    return () => {
-      if (feedbackTimeoutRef.current) {
-        clearTimeout(feedbackTimeoutRef.current);
-      }
-    };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePeriod, showLeaderboard]);
 
   /* -------------------- Render -------------------- */
   if (!user)
@@ -1035,7 +1055,7 @@ export default function UserPanel() {
                     leaderboards[activePeriod].length > 0 ? (
                       leaderboards[activePeriod].slice(0, 10).map((u, i) => (
                         <tr
-                          key={u.id}
+                          key={`${u?.id ?? "row"}-${i}`}
                           className={u.id === user.id ? "bg-yellow-100 font-bold" : ""}
                         >
                           <td className="p-1 border">{i + 1}</td>
@@ -1154,8 +1174,8 @@ export default function UserPanel() {
               {/* DURUM */}
               <StatCard label="Durum">
                 <StatusBadge
+                  color="blue"
                   text={finished ? "Tamamlandı" : started ? "Devam Ediyor" : "Hazır"}
-                  color={finished ? "emerald" : started ? "blue" : "gray"}
                 />
               </StatCard>
 
@@ -1188,43 +1208,44 @@ export default function UserPanel() {
               </div>
             )}
 
-            {/* --- GÜNÜN PUAN DURUMU (Liste) --- */}
-            {dailyLeaderboard?.length > 0 && (
-              <div className="mt-2 rounded-2xl border bg-gray-50">
-                <div className="px-3 py-2 font-bold text-sm text-cyan-700">
-                  Bugünün Puan Durumu
-                </div>
-                <div className="max-h-[260px] overflow-auto">
-                  <table className="min-w-full text-xs">
-                    <thead className="sticky top-0 bg-white">
-                      <tr>
-                        <th className="p-2 border">#</th>
-                        <th className="p-2 border text-left">Ad</th>
-                        <th className="p-2 border">Soru</th>
-                        <th className="p-2 border">Puan</th>
-                        <th className="p-2 border">Saniye</th>
+            {/* Bugünün Puan Durumu */}
+            <div className="mt-4">
+              <div className="text-sm font-bold text-gray-700 mb-2">Bugünün Puan Durumu</div>
+              <div className="overflow-auto rounded-xl border">
+                <table className="min-w-full text-xs">
+                  <thead className="bg-blue-50">
+                    <tr>
+                      <th className="p-2 border">#</th>
+                      <th className="p-2 border text-left">Ad</th>
+                      <th className="p-2 border">Soru</th>
+                      <th className="p-2 border">Puan</th>
+                      <th className="p-2 border">Saniye</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(Array.isArray(dailyLeaderboard) ? dailyLeaderboard.filter(Boolean) : []).map((u, i) => (
+                      <tr
+                        key={`${u?.id ?? "row"}-${i}`}
+                        className={String(u?.id) === String(user.id) ? "bg-yellow-50" : ""}
+                      >
+                        <td className="p-2 border text-center">{i + 1}</td>
+                        <td className="p-2 border">{u?.ad ?? "-"}</td>
+                        <td className="p-2 border text-center">{u?.answered_count ?? 0}</td>
+                        <td className="p-2 border text-center">{u?.total_points ?? 0}</td>
+                        <td className="p-2 border text-center">{u?.time_spent ?? 0}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {dailyLeaderboard.slice(0, 20).map((u, i) => (
-                        <tr
-                          key={u.id}
-                          className={u.id === user.id ? "bg-yellow-50 font-semibold" : ""}
-                        >
-                          <td className="p-2 border text-center">{i + 1}</td>
-                          <td className="p-2 border">
-                            {u.ad} {u.soyad}
-                          </td>
-                          <td className="p-2 border text-center">{u.answered_count}</td>
-                          <td className="p-2 border text-center">{u.total_points}</td>
-                          <td className="p-2 border text-center">{u.time_spent}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                    {(!Array.isArray(dailyLeaderboard) || dailyLeaderboard.length === 0) && (
+                      <tr>
+                        <td className="p-2 border text-center text-gray-400" colSpan={5}>
+                          Henüz katılım yok.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
-            )}
+            </div>
 
             <button
               className="w-full py-2 rounded-2xl font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300 active:scale-95 transition"
@@ -1352,7 +1373,7 @@ export default function UserPanel() {
           </div>
           <button
             className="mt-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-2xl hover:bg-gray-400"
-            onClick={skipDaily}
+            onClick={handleDailySkip}
           >
             Şimdilik bu kadar yeter
           </button>
