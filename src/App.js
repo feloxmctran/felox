@@ -1,3 +1,4 @@
+// src/App.js
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
@@ -5,19 +6,19 @@ import RegisterPage from "./pages/RegisterPage";
 import AdminPanel from "./pages/AdminPanel";
 import EditorPanel from "./pages/EditorPanel";
 import UserPanel from "./pages/UserPanel";
-import ProtectedRoute from "./ProtectedRoute"; // Bunu ekledik
+import ProtectedRoute from "./ProtectedRoute";
 
 export default function App() {
   return (
     <Router>
       <Routes>
-        {/* Giriş sayfası */}
+        {/* Giriş */}
         <Route path="/login" element={<LoginPage />} />
 
-        {/* Kayıt sayfası */}
+        {/* Kayıt */}
         <Route path="/register" element={<RegisterPage />} />
 
-        {/* Admin Panel */}
+        {/* Admin */}
         <Route
           path="/admin"
           element={
@@ -27,7 +28,7 @@ export default function App() {
           }
         />
 
-        {/* Editör Panel */}
+        {/* Editor */}
         <Route
           path="/editor"
           element={
@@ -37,7 +38,7 @@ export default function App() {
           }
         />
 
-        {/* Kullanıcı Panel */}
+        {/* User */}
         <Route
           path="/user"
           element={
@@ -47,8 +48,9 @@ export default function App() {
           }
         />
 
-        {/* Herhangi bir bilinmeyen route'a login'e yönlendir */}
-        <Route path="*" element={<Navigate to="/login" />} />
+        {/* root ve bilinmeyen rotalar login'e */}
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
   );
