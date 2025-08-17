@@ -32,8 +32,11 @@ async function removeFeloxUser() {
 }
 
 /* -------------------- Config -------------------- */
+// Vite (import.meta.env) ve CRA (process.env) uyumlu okuma
 const apiUrl =
-  process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
+  process.env.REACT_APP_API_URL ||
+  "https://felox-backend.onrender.com";
 
 const PERIODS = [
   { key: "today", label: "Bugün" },
@@ -85,9 +88,23 @@ const Stars = ({ count = 1 }) => (
 );
 
 /* -------------------- Küçük yardımcı UI bileşenleri -------------------- */
+// Dinamik tailwind sınıfı yerine sabit harita (purge güvenli)
+const STATUS_COLORS = {
+  emerald: "bg-emerald-50 text-emerald-700",
+  red: "bg-red-50 text-red-700",
+  orange: "bg-orange-50 text-orange-700",
+  purple: "bg-purple-50 text-purple-700",
+  blue: "bg-blue-50 text-blue-700",
+  cyan: "bg-cyan-50 text-cyan-700",
+  green: "bg-green-50 text-green-700",
+  yellow: "bg-yellow-50 text-yellow-700",
+};
+
 const StatusBadge = ({ text, color = "emerald" }) => (
   <span
-    className={`inline-flex items-center px-2.5 py-1 rounded-full bg-${color}-50 text-${color}-700 text-xs font-semibold`}
+    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+      STATUS_COLORS[color] || STATUS_COLORS.emerald
+    }`}
   >
     {text}
   </span>
@@ -417,22 +434,12 @@ export default function UserPanel() {
   const loadLevelQuestions = async (level) => {
     setLoadingLevelQuestions(true);
     try {
-      const res = await fetch(`${apiUrl}/api/user/approved-surveys`);
-      const data = await res.json();
-      let all = [];
-      for (const survey of data.surveys || []) {
-        const qRes = await fetch(
-          `${apiUrl}/api/surveys/${survey.id}/questions`
-        );
-        const qData = await qRes.json();
-        if (qData.success) {
-          all = all.concat(
-            qData.questions.filter(
-              (qq) => qq.point === level && !correctAnswered.includes(qq.id)
-            )
-          );
-        }
-      }
+      // Daha hızlı: backend endpoint'i kullan (doğru cevapladıklarını zaten filtreler)
+      const res = await fetch(
+        `${apiUrl}/api/user/${user.id}/kademeli-questions?point=${level}&limit=200`
+      );
+      const d = await res.json();
+      const all = d?.success ? d.questions || [] : [];
       shuffleInPlace(all);
 
       setQuestions(all);
@@ -661,10 +668,11 @@ export default function UserPanel() {
           } else msg = "BİLEMEDİN";
 
           setFeedback(msg);
-          setStarsCount(starCount); // <-- BUG FIX
+          setStarsCount(starCount);
           setShowStars(stars && d.is_correct === 1);
           setFeedbackActive(true);
 
+          // Kademeli sayaçları güncelle
           if (ladderActive && cevap !== "bilmem") {
             setLadderAttempts((prev) => prev + 1);
             if (d.is_correct === 1) setLadderCorrect((prev) => prev + 1);
@@ -681,11 +689,26 @@ export default function UserPanel() {
             refreshUserStats();
 
             if (currentIdx < questions.length - 1) {
+              // Listede soru varsa sıradaki soruya geç
               setCurrentIdx((prev) => prev + 1);
             } else {
+              // Liste bitti: kademeli ise seviye kontrolünü anlık değerlendir
               if (ladderActive) {
-                checkLadderProgress();
-                if (!showLevelUpPrompt) {
+                const incAttempt = cevap !== "bilmem" ? 1 : 0;
+                const incCorrect = d.is_correct === 1 ? 1 : 0;
+                const nextAttempts = ladderAttempts + incAttempt;
+                const nextCorrect = ladderCorrect + incCorrect;
+                const acc = nextAttempts ? nextCorrect / nextAttempts : 0;
+
+                if (nextAttempts >= 100 && acc >= 0.8) {
+                  if (ladderLevel < 10) {
+                    setShowLevelUpPrompt(true);
+                  } else {
+                    setMode("genius");
+                    setLadderActive(false);
+                  }
+                } else {
+                  // Eşik sağlanmadıysa aynı seviyeden yeni set yükle
                   loadLevelQuestions(ladderLevel);
                 }
               } else {
@@ -825,6 +848,9 @@ export default function UserPanel() {
       </div>
     );
 
+    const rankText =
+      todayRankLoading ? "—" : Number(todayRank) > 0 ? `${todayRank}.` : "-";
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
@@ -851,14 +877,8 @@ export default function UserPanel() {
               <Box title="Cevapladığın" value={answeredCount} />
               <Box
                 title="Bugün"
-                value={
-                  todayRankLoading
-                    ? "—"
-                    : todayRank != null
-                    ? `${todayRank}.`
-                    : "-"
-                }
-                caption={todayRankLoading ? "" : "sıradasın"}
+                value={rankText}
+                caption={todayRankLoading || !(Number(todayRank) > 0) ? "" : "sıradasın"}
               />
             </div>
           </div>
@@ -1056,6 +1076,9 @@ export default function UserPanel() {
     const finished = !!dailyStatus?.finished;
     const started = !finished && idx > 0;
 
+    const rankText =
+      todayRankLoading ? "—" : Number(todayRank) > 0 ? `${todayRank}.` : "-";
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
@@ -1094,8 +1117,10 @@ export default function UserPanel() {
 
               {/* BUGÜN (rank) */}
               <StatCard label="Bugün">
-                {todayRankLoading ? "—" : todayRank != null ? `${todayRank}.` : "-"}
-                <div className="text-[11px] text-gray-500 mt-0.5">sıradasın</div>
+                {rankText}
+                {Number(todayRank) > 0 && (
+                  <div className="text-[11px] text-gray-500 mt-0.5">sıradasın</div>
+                )}
               </StatCard>
 
               {/* PUAN (günün yarışı) */}
