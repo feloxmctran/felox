@@ -85,7 +85,6 @@ const Stars = ({ count = 1 }) => (
 );
 
 /* -------------------- Küçük yardımcı UI bileşenleri -------------------- */
-/** 1.1 – Tailwind dinamik renk bugfix: map ile sabit sınıflar */
 const STATUS_COLORS = {
   emerald: "bg-emerald-50 text-emerald-700",
   blue: "bg-blue-50 text-blue-700",
@@ -233,7 +232,6 @@ export default function UserPanel() {
   const [feedbackActive, setFeedbackActive] = useState(false);
   const [showStars, setShowStars] = useState(false);
   const [starsCount, setStarsCount] = useState(1);
-  /** 1.5 – Timeout cleanup için ref */
   const feedbackTimeoutRef = useRef(null);
 
   // Puanlarım (performans)
@@ -268,6 +266,7 @@ export default function UserPanel() {
   const [dailyLoading, setDailyLoading] = useState(false);
   const [dailyError, setDailyError] = useState("");
   const [dailyPoints, setDailyPoints] = useState(0);
+  const [dailyLeaderboard, setDailyLeaderboard] = useState([]); // <-- YENİ
 
   /* -------------------- Yardımcılar -------------------- */
   const fetchRandomQuote = async () => {
@@ -426,7 +425,6 @@ export default function UserPanel() {
   };
 
   /* -------------------- Kademeli Yarış -------------------- */
-  /** 1.3 – Soruları backend’ten al (tekrarsız & hızlı) */
   const loadLevelQuestions = async (level) => {
     setLoadingLevelQuestions(true);
     try {
@@ -458,7 +456,6 @@ export default function UserPanel() {
   };
 
   const checkLadderProgress = () => {
-    // Eski yerel kontrol (artık kullanılmıyor ama kalsın):
     if (ladderAttempts >= 100) {
       const acc = ladderAttempts > 0 ? ladderCorrect / ladderAttempts : 0;
       if (acc >= 0.8) {
@@ -472,7 +469,6 @@ export default function UserPanel() {
     }
   };
 
-  /** 1.4 – Seviye atlama kararını backend’e bırak */
   const checkLadderProgressServer = async (point) => {
     try {
       const r = await fetch(
@@ -504,8 +500,20 @@ export default function UserPanel() {
         const me = d.leaderboard.find((u) => String(u.id) === String(user.id));
         setDailyPoints(me?.total_points || 0);
       }
+    } catch {}
+  }
+
+  async function fetchDailyLeaderboard(dayKey) {
+    try {
+      const r = await fetch(`${apiUrl}/api/daily/leaderboard?day=${encodeURIComponent(dayKey)}`);
+      const d = await r.json();
+      if (d?.success && Array.isArray(d.leaderboard)) {
+        setDailyLeaderboard(d.leaderboard);
+      } else {
+        setDailyLeaderboard([]);
+      }
     } catch {
-      /* sessizce geç */
+      setDailyLeaderboard([]);
     }
   }
 
@@ -516,7 +524,10 @@ export default function UserPanel() {
       const d = await r.json();
       if (d?.success) {
         setDailyStatus(d);
-        if (d.day_key) fetchMyDailyPoints(d.day_key);
+        if (d.day_key) {
+          fetchMyDailyPoints(d.day_key);
+          fetchDailyLeaderboard(d.day_key); // <-- YENİ
+        }
       } else {
         setDailyStatus(null);
       }
@@ -558,8 +569,7 @@ export default function UserPanel() {
       setTimeLeft(24);
       setTimerActive(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIdx, mode, questions, dailyQuestion]);
+  }, [currentIdx, mode, questions, dailyQuestion]); // eslint-disable-line
 
   useEffect(() => {
     if (timerActive && timeLeft > 0) {
@@ -570,8 +580,7 @@ export default function UserPanel() {
       setTimerActive(false);
       handleAnswer("bilmem");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLeft, timerActive]);
+  }, [timeLeft, timerActive]); // eslint-disable-line
 
   /* -------------------- Cevap işle -------------------- */
   const getSuccessMsg = (puan) => {
@@ -690,7 +699,7 @@ export default function UserPanel() {
           } else msg = "BİLEMEDİN";
 
           setFeedback(msg);
-          setStarsCount(starCount); // <-- BUG FIX
+          setStarsCount(starCount);
           setShowStars(stars && d.is_correct === 1);
           setFeedbackActive(true);
 
@@ -714,7 +723,6 @@ export default function UserPanel() {
               setCurrentIdx((prev) => prev + 1);
             } else {
               if (ladderActive) {
-                // 1.4 – Seviye ilerleme kararını backend’e sor
                 checkLadderProgressServer(ladderLevel);
               } else {
                 setMode("thankyou");
@@ -728,7 +736,6 @@ export default function UserPanel() {
       .catch(() => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
   };
 
-  /** 1.2 – Günlük “Şimdilik bu kadar” için /api/daily/skip kullan */
   const skipDaily = async () => {
     if (!user || !dailyQuestion) return;
     try {
@@ -853,10 +860,9 @@ export default function UserPanel() {
     if (showLeaderboard) {
       fetchLeaderboard(activePeriod);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePeriod, showLeaderboard]);
+  }, [activePeriod, showLeaderboard]); // eslint-disable-line
 
-  /** 1.5 – Unmount temizliği: feedback timeout’u sıfırla */
+  /* --- Unmount temizliği --- */
   useEffect(() => {
     return () => {
       if (feedbackTimeoutRef.current) {
@@ -1112,7 +1118,7 @@ export default function UserPanel() {
   /* -------------------- GÜNÜN YARIŞMASI (dashboard) -------------------- */
   if (mode === "today") {
     const idx = Number(dailyStatus?.index ?? 0);
-    const size = Number.isFinite(Number(dailyStatus?.size)) ? Number(dailyStatus.size) : 0; // <-- sağlam
+    const size = Number.isFinite(Number(dailyStatus?.size)) ? Number(dailyStatus.size) : 0;
     const finished = !!dailyStatus?.finished;
     const started = !finished && idx > 0;
 
@@ -1145,7 +1151,7 @@ export default function UserPanel() {
                 </span>
               </StatCard>
 
-              {/* DURUM — 3.2 rozet rengi */}
+              {/* DURUM */}
               <StatCard label="Durum">
                 <StatusBadge
                   text={finished ? "Tamamlandı" : started ? "Devam Ediyor" : "Hazır"}
@@ -1179,6 +1185,44 @@ export default function UserPanel() {
             {dailyError && (
               <div className="px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
                 {dailyError}
+              </div>
+            )}
+
+            {/* --- GÜNÜN PUAN DURUMU (Liste) --- */}
+            {dailyLeaderboard?.length > 0 && (
+              <div className="mt-2 rounded-2xl border bg-gray-50">
+                <div className="px-3 py-2 font-bold text-sm text-cyan-700">
+                  Bugünün Puan Durumu
+                </div>
+                <div className="max-h-[260px] overflow-auto">
+                  <table className="min-w-full text-xs">
+                    <thead className="sticky top-0 bg-white">
+                      <tr>
+                        <th className="p-2 border">#</th>
+                        <th className="p-2 border text-left">Ad</th>
+                        <th className="p-2 border">Soru</th>
+                        <th className="p-2 border">Puan</th>
+                        <th className="p-2 border">Saniye</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dailyLeaderboard.slice(0, 20).map((u, i) => (
+                        <tr
+                          key={u.id}
+                          className={u.id === user.id ? "bg-yellow-50 font-semibold" : ""}
+                        >
+                          <td className="p-2 border text-center">{i + 1}</td>
+                          <td className="p-2 border">
+                            {u.ad} {u.soyad}
+                          </td>
+                          <td className="p-2 border text-center">{u.answered_count}</td>
+                          <td className="p-2 border text-center">{u.total_points}</td>
+                          <td className="p-2 border text-center">{u.time_spent}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
