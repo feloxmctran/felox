@@ -181,7 +181,7 @@ export default function UserPanel() {
   const [todayRankLoading, setTodayRankLoading] = useState(false);
 
   // Görünüm modu
-  const [mode, setMode] = useState("panel"); // panel | today | list | solve | thankyou | genius
+  const [mode, setMode] = useState("panel"); // panel | today | list | solve | thankyou | genius | finishedToday
 
   // Kategoriler & sorular
   const [surveys, setSurveys] = useState([]);
@@ -190,7 +190,7 @@ export default function UserPanel() {
   // Doğru sorular (id listesi)
   const [correctAnswered, setCorrectAnswered] = useState([]);
 
-  // Soru çözümü
+  // Soru çözümü (ortak)
   const [currentIdx, setCurrentIdx] = useState(0);
   const [info, setInfo] = useState("");
   const [timeLeft, setTimeLeft] = useState(24);
@@ -208,13 +208,6 @@ export default function UserPanel() {
   const [surveyActivePeriod, setSurveyActivePeriod] = useState("today");
   const [surveyLoading, setSurveyLoading] = useState(false);
 
-  // Günlük yarışma
-  const [dailyActive, setDailyActive] = useState(false); // çözüm sırasında context
-  const [dailyDay, setDailyDay] = useState(null);
-  const [showDailyLb, setShowDailyLb] = useState(false);
-  const [dailyLb, setDailyLb] = useState([]);
-  const [dailyLbLoading, setDailyLbLoading] = useState(false);
-
   // Feedback & yıldız
   const [feedback, setFeedback] = useState("");
   const [feedbackActive, setFeedbackActive] = useState(false);
@@ -227,20 +220,27 @@ export default function UserPanel() {
   const [myPerfLoading, setMyPerfLoading] = useState(false);
   const [myPerfError, setMyPerfError] = useState("");
 
-  // En iyi başlık (avatar için) + başarı yüzdesi
+  // Avatar/başlık
   const [bestTitle, setBestTitle] = useState("");
   const [bestTitlePercent, setBestTitlePercent] = useState(null);
-
-  // Avatar manifest
   const [avatarManifest, setAvatarManifest] = useState(null);
 
   // Kademeli Yarış
   const [ladderActive, setLadderActive] = useState(false);
-  const [ladderLevel, setLadderLevel] = useState(1); // 1..10
-  const [ladderAttempts, setLadderAttempts] = useState(0); // bilmem hariç
+  const [ladderLevel, setLadderLevel] = useState(1);
+  const [ladderAttempts, setLadderAttempts] = useState(0);
   const [ladderCorrect, setLadderCorrect] = useState(0);
   const [showLevelUpPrompt, setShowLevelUpPrompt] = useState(false);
   const [loadingLevelQuestions, setLoadingLevelQuestions] = useState(false);
+
+  // Günün Yarışması (yeni)
+  const [dailyActive, setDailyActive] = useState(false);
+  const [dailyTotal, setDailyTotal] = useState(0);
+  const [dailyAnswered, setDailyAnswered] = useState(0);
+  const [dailyPoints, setDailyPoints] = useState(0);
+  const [dailyDuration, setDailyDuration] = useState(0);
+  const [dailyQuestion, setDailyQuestion] = useState(null); // {id, question, point}
+  const [dailyLoading, setDailyLoading] = useState(false);
 
   // TEŞEKKÜRLER ekranı için alıntı
   const [quote, setQuote] = useState(null);
@@ -302,7 +302,7 @@ export default function UserPanel() {
   useEffect(() => {
     if (!user) return;
 
-    // Doğru cevap id'leri
+    // Doğru cevap id'leri (genel)
     fetch(`${apiUrl}/api/user/${user.id}/answers`)
       .then((res) => res.json())
       .then((data) => {
@@ -365,46 +365,13 @@ export default function UserPanel() {
         setBestTitle("");
         setBestTitlePercent(null);
       });
-
     // eslint-disable-next-line
   }, [user]);
 
-  // thankyou moduna her girişte yeni söz çek
+  // thankyou moduna her girişte söz çek
   useEffect(() => {
     if (mode === "thankyou") fetchRandomQuote();
   }, [mode]);
-
-  /* -------------------- Günlük Yarışması -------------------- */
-  const startDailyContest = async () => {
-    try {
-      const r = await fetch(`${apiUrl}/api/daily-contest/start?user_id=${user.id}`);
-      const d = await r.json();
-      if (!d.success) {
-        alert(d.error || "Günün yarışması başlatılamadı");
-        return;
-      }
-      setDailyActive(true);
-      setDailyDay(d.day);
-      setQuestions(d.questions);
-      setCurrentIdx(0);
-      setMode("solve");
-      setLadderActive(false);
-    } catch {
-      alert("Bağlantı hatası");
-    }
-  };
-
-  const openDailyLeaderboard = async () => {
-    setShowDailyLb(true);
-    setDailyLb([]);
-    setDailyLbLoading(true);
-    try {
-      const res = await fetch(`${apiUrl}/api/daily-contest/leaderboard`);
-      const data = await res.json();
-      if (data?.success) setDailyLb(data.leaderboard || []);
-    } catch {}
-    setDailyLbLoading(false);
-  };
 
   /* -------------------- Kategorileri (onaylı) çek -------------------- */
   const fetchSurveys = () => {
@@ -423,7 +390,6 @@ export default function UserPanel() {
             (q) => !correctAnswered.includes(q.id)
           );
           shuffleInPlace(filtered);
-
           setQuestions(filtered);
           setCurrentIdx(0);
           setMode("solve");
@@ -484,7 +450,6 @@ export default function UserPanel() {
     );
 
     shuffleInPlace(filtered);
-
     setQuestions(filtered);
     setCurrentIdx(0);
     setMode("solve");
@@ -513,7 +478,6 @@ export default function UserPanel() {
         }
       }
       shuffleInPlace(all);
-
       setQuestions(all);
       setCurrentIdx(0);
       setMode("solve");
@@ -545,6 +509,47 @@ export default function UserPanel() {
     }
   };
 
+  /* -------------------- Günün Yarışması -------------------- */
+  const fetchDailyStatus = async () => {
+    setDailyLoading(true);
+    try {
+      const r = await fetch(`${apiUrl}/api/daily/status?user_id=${user.id}`);
+      const d = await r.json();
+      if (!d?.success) throw new Error(d?.error || "Durum alınamadı");
+      setDailyTotal(d.total || 0);
+      setDailyAnswered(d.answered_count || 0);
+      setDailyPoints(d.points || 0);
+      setDailyDuration(d.duration_seconds || 0);
+      if (d.finished || !d.question) {
+        setDailyQuestion(null);
+        return { finished: true };
+      } else {
+        setDailyQuestion(d.question);
+        return { finished: false };
+      }
+    } catch (e) {
+      setDailyQuestion(null);
+      return { finished: true };
+    } finally {
+      setDailyLoading(false);
+    }
+  };
+
+  const startOrResumeDaily = async () => {
+    const st = await fetchDailyStatus();
+    if (st.finished) {
+      setMode("finishedToday");
+      setDailyActive(false);
+      return;
+    }
+    // tek soruluk çözüm ekranı
+    setQuestions([{ id: (dailyQuestion || {}).id, question: (dailyQuestion || {}).question, point: (dailyQuestion || {}).point }]);
+    setCurrentIdx(0);
+    setMode("solve");
+    setDailyActive(true);
+    setLadderActive(false);
+  };
+
   /* -------------------- Zamanlayıcı -------------------- */
   useEffect(() => {
     if (mode === "solve" && questions.length > 0) {
@@ -562,7 +567,8 @@ export default function UserPanel() {
       setTimerActive(false);
       handleAnswer("bilmem");
     }
-  }, [timeLeft, timerActive]); // eslint-disable-line
+    // eslint-disable-next-line
+  }, [timeLeft, timerActive]);
 
   /* -------------------- Cevap işle -------------------- */
   const getSuccessMsg = (puan) => {
@@ -587,75 +593,151 @@ export default function UserPanel() {
     } catch {}
   };
 
-  const handleAnswer = (cevap) => {
-    setTimerActive(false);
-    const q = questions[currentIdx];
-    setInfo("");
+  const afterAnswerCommon = async (correct, point) => {
+    let msg = "";
+    let stars = false;
+    let starCount = 1;
+    if (point == null) point = 1;
+    if (correct === null) msg = "ÖĞREN DE GEL"; // bilmem
+    else if (correct === true) {
+      msg = getSuccessMsg(point);
+      stars = true;
+      starCount = Math.max(1, Math.min(point || 1, 10));
+    } else msg = "BİLEMEDİN";
 
-    fetch(`${apiUrl}/api/answers`, {
+    setFeedback(msg);
+    setStarsCount(starCount);
+    setShowStars(stars && correct === true);
+    setFeedbackActive(true);
+
+    setTimeout(async () => {
+      setFeedbackActive(false);
+      setShowStars(false);
+
+      // kullanıcı üst bilgi tazele
+      refreshUserStats();
+
+      if (dailyActive) {
+        // bir sonraki soruyu getir ya da bitti ise bilgiyi göster
+        const st = await fetchDailyStatus();
+        if (st.finished) {
+          setDailyActive(false);
+          setMode("finishedToday");
+        } else {
+          // yeni tek soruluk set
+          setQuestions([{ id: (dailyQuestion || {}).id, question: (dailyQuestion || {}).question, point: (dailyQuestion || {}).point }]);
+          setCurrentIdx(0);
+          setMode("solve");
+        }
+        return;
+      }
+
+      // Kademeli
+      if (ladderActive) {
+        checkLadderProgress();
+        loadLevelQuestions(ladderLevel);
+        return;
+      }
+
+      // Standart mod
+      if (currentIdx < questions.length - 1) {
+        setCurrentIdx((prev) => prev + 1);
+      } else {
+        setMode("thankyou");
+      }
+    }, 3200);
+  };
+
+  // Günlük yarışma cevabı gönder
+  const submitDaily = async (qid, ans) => {
+    const body = {
+      user_id: user.id,
+      question_id: qid,
+      answer: ans,
+      time_left_seconds: timeLeft,
+      max_time_seconds: 24,
+    };
+    const url = ans === "skip" ? `${apiUrl}/api/daily/skip` : `${apiUrl}/api/daily/answer`;
+    const payload = ans === "skip" ? { ...body, answer: "bilmem" } : body;
+    const r = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_id: user.id,
-        question_id: q.id,
-        answer: cevap,
-        time_left_seconds: timeLeft,
-        max_time_seconds: 24,
-        ...(dailyActive ? { context: "daily", contest_day: dailyDay } : {}),
-      }),
-    })
-      .then((res) => res.json())
-      .then((d) => {
-        if (d.success) {
-          let msg = "";
-          let stars = false;
-          let starCount = 1;
-          if (cevap === "bilmem") msg = "ÖĞREN DE GEL";
-          else if (d.is_correct === 1) {
-            msg = getSuccessMsg(q.point);
-            stars = true;
-            starCount = Math.max(1, Math.min(q.point || 1, 10));
-          } else msg = "BİLEMEDİN";
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!d?.success) {
+      if (r.status === 409) {
+        // zaten bitmiş ya da sırayla uyuşmadı -> statü tazele
+        await fetchDailyStatus();
+        setDailyActive(false);
+        setMode("finishedToday");
+      } else {
+        setInfo(d.error || "Cevap kaydedilemedi!");
+      }
+      return { ok: false };
+    }
+    return { ok: true, is_correct: d.is_correct === 1 };
+  };
 
-          setFeedback(msg);
-          setStarsCount(starCount);
-          setShowStars(stars && d.is_correct === 1);
-          setFeedbackActive(true);
+  const handleAnswer = async (cevap) => {
+    setTimerActive(false);
+    setInfo("");
+    const q = questions[currentIdx];
 
-          if (ladderActive && cevap !== "bilmem") {
-            setLadderAttempts((prev) => prev + 1);
-            if (d.is_correct === 1) setLadderCorrect((prev) => prev + 1);
+    try {
+      if (dailyActive) {
+        // Günlük mod
+        if (cevap === "bilmem") {
+          const res = await submitDaily(q.id, "skip");
+          if (res.ok) {
+            await afterAnswerCommon(null, q.point); // null -> bilmem
           }
-
-          setTimeout(() => {
-            setFeedbackActive(false);
-            setShowStars(false);
-
-            if (d.is_correct === 1) {
-              setCorrectAnswered((prev) => [...prev, q.id]);
-            }
-
-            refreshUserStats();
-
-            if (currentIdx < questions.length - 1) {
-              setCurrentIdx((prev) => prev + 1);
-            } else {
-              if (ladderActive) {
-                checkLadderProgress();
-                if (!showLevelUpPrompt) {
-                  loadLevelQuestions(ladderLevel);
-                }
-              } else {
-                setMode("thankyou");
-                if (dailyActive) setDailyActive(false);
-              }
-            }
-          }, 3200);
+          return;
         } else {
-          setInfo(d.error || "Cevap kaydedilemedi!");
+          const res = await submitDaily(q.id, cevap);
+          if (res.ok) {
+            await afterAnswerCommon(res.is_correct, q.point);
+          }
+          return;
         }
-      })
-      .catch(() => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
+      }
+
+      // Kademeli/Standart (genel kayıt)
+      const r = await fetch(`${apiUrl}/api/answers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user.id,
+          question_id: q.id,
+          answer: cevap,
+          time_left_seconds: timeLeft,
+          max_time_seconds: 24,
+        }),
+      });
+      const d = await r.json();
+      if (!d?.success) {
+        setInfo(d.error || "Cevap kaydedilemedi!");
+        return;
+      }
+
+      // Kademeli istatistik
+      if (ladderActive && cevap !== "bilmem") {
+        setLadderAttempts((prev) => prev + 1);
+        if (d.is_correct === 1) setLadderCorrect((prev) => prev + 1);
+      }
+
+      // doğruysa tekrar gelmesin
+      if (d.is_correct === 1) {
+        setCorrectAnswered((prev) => [...prev, q.id]);
+      }
+
+      await afterAnswerCommon(
+        cevap === "bilmem" ? null : d.is_correct === 1,
+        q.point
+      );
+    } catch {
+      setInfo("Cevap kaydedilemedi! (İletişim hatası)");
+    }
   };
 
   /* -------------------- Çıkış -------------------- */
@@ -755,6 +837,7 @@ export default function UserPanel() {
     } catch {}
   };
 
+  // Dönem değişince modal açıksa güncelle
   useEffect(() => {
     if (showLeaderboard) {
       fetchLeaderboard(activePeriod);
@@ -800,7 +883,6 @@ export default function UserPanel() {
               {user.ad} {user.soyad}
             </h1>
 
-            {/* Başlık etiketi */}
             {renderBestTitleBadge()}
 
             <div className="w-full flex gap-3 mt-3 flex-wrap">
@@ -1008,13 +1090,13 @@ export default function UserPanel() {
     );
   }
 
-  /* -------------------- GÜNÜN YARIŞMASI -------------------- */
+  /* -------------------- GÜNÜN YARIŞMASI (inline) -------------------- */
   if (mode === "today") {
-    const Box = ({ title }) => (
+    const Box = ({ title, value, caption }) => (
       <div className="flex-1 min-w-[30%] bg-white/80 rounded-2xl shadow p-4 text-center h-[91px]">
         <div className="text-xs text-gray-500 mb-1">{title}</div>
-        <div className="text-2xl font-extrabold text-emerald-700"></div>
-        <div className="text-[11px] text-gray-500 mt-0.5"></div>
+        <div className="text-2xl font-extrabold text-emerald-700">{value}</div>
+        {caption ? <div className="text-[11px] text-gray-500 mt-0.5">{caption}</div> : null}
       </div>
     );
 
@@ -1022,6 +1104,7 @@ export default function UserPanel() {
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
           <div className="flex flex-col items-center gap-2">
+            {/* Avatar */}
             <div className="rounded-full bg-gray-100 p-1 shadow-md mb-2">
               <img
                 src={getAvatarUrl()}
@@ -1031,107 +1114,53 @@ export default function UserPanel() {
                 className="w-[140px] h-[140px] rounded-full object-contain"
               />
             </div>
+
+            {/* İsim */}
             <h1 className="text-2xl font-extrabold text-cyan-700 text-center">
               {user.ad} {user.soyad}
             </h1>
 
+            {/* Bilgi kutuları: o anki ilerleme */}
             <div className="w-full flex gap-3 mt-3 flex-wrap">
-              <Box title="Puanın" />
-              <Box title="Cevapladığın" />
-              <Box title="Bugün" />
+              <Box title="Toplam Soru" value={dailyTotal || "-"} />
+              <Box title="Çözdüğün" value={dailyAnswered || "-"} />
+              <Box title="Puanın" value={dailyPoints || 0} />
             </div>
           </div>
 
           <div className="flex flex-col gap-3 mt-6">
             <button
-              className="w-full py-3 rounded-2xl font-bold bg-blue-600 hover:bg-blue-800 text-white shadow-lg active:scale-95 transition"
-              onClick={startDailyContest}
-              title="Günün yarışmasına başla"
+              className="w-full py-3 rounded-2xl font-bold bg-blue-600 hover:bg-blue-800 text-white shadow-lg active:scale-95 transition disabled:opacity-60"
+              onClick={startOrResumeDaily}
+              title="Günün yarışmasına başla / devam et"
+              disabled={dailyLoading}
             >
-              🏁 Yarışmaya Başla
-            </button>
-
-            <button
-              className="w-full py-3 rounded-2xl font-bold bg-orange-600 hover:bg-orange-800 text-white shadow-lg active:scale-95 transition"
-              onClick={openDailyLeaderboard}
-            >
-              🏅 Günlük Yarışma Puan Tablosu
+              {dailyLoading ? "Yükleniyor…" : (dailyAnswered > 0 ? "Devam Et" : "🏁 Yarışmaya Başla")}
             </button>
 
             <button
               className="w-full py-2 rounded-2xl font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300 active:scale-95 transition"
-              onClick={() => setMode("panel")}
+              onClick={async () => {
+                await fetchDailyStatus();
+                setMode("panel");
+              }}
               title="Panele dön"
             >
               ← Geri Dön
             </button>
           </div>
-        </div>
 
-        {/* Günlük yarışma puan tablosu modal */}
-        {showDailyLb && (
-          <div className="fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-3">
-            <div className="bg-white rounded-3xl shadow-2xl p-5 w-full max-w-sm relative">
-              <button
-                className="absolute top-2 right-3 text-2xl text-gray-400 hover:text-red-500"
-                onClick={() => setShowDailyLb(false)}
-                title="Kapat"
-              >
-                &times;
-              </button>
-              <h3 className="text-xl font-bold mb-3 text-orange-700 text-center">
-                Günlük Yarışma Puan Tablosu (Bugün)
-              </h3>
-
-              <div className="min-h-[160px]">
-                {dailyLbLoading ? (
-                  <div className="text-center text-gray-500 py-10">Yükleniyor…</div>
-                ) : (
-                  <table className="min-w-full border text-xs">
-                    <thead>
-                      <tr>
-                        <th className="p-1 border">#</th>
-                        <th className="p-1 border">Ad</th>
-                        <th className="p-1 border">Soyad</th>
-                        <th className="p-1 border">Puan</th>
-                        <th className="p-1 border">Süre(sn)</th>
-                        <th className="p-1 border" title="Bugüne kadar kaç gün 1.'lik">Rütbe</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dailyLb.length > 0 ? (
-                        dailyLb.slice(0, 20).map((u, i) => (
-                          <tr
-                            key={u.id}
-                            className={u.id === user.id ? "bg-yellow-100 font-bold" : ""}
-                          >
-                            <td className="p-1 border">{i + 1}</td>
-                            <td className="p-1 border">{u.ad}</td>
-                            <td className="p-1 border">{u.soyad}</td>
-                            <td className="p-1 border">{u.total_points}</td>
-                            <td className="p-1 border">{u.spent_seconds}</td>
-                            <td className="p-1 border">{u.wins}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={6} className="text-gray-400 text-center py-2">
-                            Veri yok.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
+          {/* sayfaya girince durum çek */}
+          <div className="sr-only">
+            {/* Hidden effect */}
+            {useEffect(() => { fetchDailyStatus(); /* eslint-disable-next-line */ }, [])}
           </div>
-        )}
+        </div>
       </div>
     );
   }
 
-  /* -------------------- ONAYLI KATEGORİLER -------------------- */
+  /* -------------------- ONAYLI KATEGORİLER (modern) -------------------- */
   if (mode === "list") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-400 to-cyan-600 px-3 py-6">
@@ -1194,7 +1223,7 @@ export default function UserPanel() {
           </div>
         </div>
 
-        {/* Kategoriye özel puan tablosu modalı (periyodik) */}
+        {/* Kategoriye özel puan tablosu modalı */}
         {showSurveyLeaderboard && (
           <div className="fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-3">
             <div className="bg-white rounded-3xl shadow-2xl p-5 w-full max-w-sm relative">
@@ -1274,19 +1303,19 @@ export default function UserPanel() {
   /* -------------------- SORU ÇÖZ -------------------- */
   if (mode === "solve" && questions.length > 0) {
     const q = questions[currentIdx];
+    const header =
+      dailyActive
+        ? `Günün Yarışması • Soru ${dailyAnswered + 1} / ${dailyTotal}`
+        : (ladderActive
+            ? `Kademeli Yarış • Seviye ${ladderLevel} • Deneme ${ladderAttempts} • Doğru ${ladderCorrect}`
+            : "Standart Mod");
+
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600 px-3">
         <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
           <h2 className="text-xl font-bold text-cyan-700 mb-3">
-            Soru {currentIdx + 1} / {questions.length}
+            {header}
           </h2>
-          <div className="text-sm text-gray-600 mb-1">
-            {ladderActive
-              ? `Kademeli Yarış • Seviye ${ladderLevel} • Deneme ${ladderAttempts} • Doğru ${ladderCorrect}`
-              : dailyActive
-              ? "Günün Yarışması"
-              : "Standart Mod"}
-          </div>
           <div className="text-4xl font-mono text-emerald-700 mb-2 select-none">
             {timeLeft}
           </div>
@@ -1319,7 +1348,13 @@ export default function UserPanel() {
           </div>
           <button
             className="mt-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-2xl hover:bg-gray-400"
-            onClick={() => setMode("thankyou")}
+            onClick={async () => {
+              if (dailyActive) {
+                // günlükte Şimdilik bu kadar → mevcut soruyu bilmem say
+                await submitDaily(q.id, "skip");
+              }
+              setMode("thankyou");
+            }}
           >
             Şimdilik bu kadar yeter
           </button>
@@ -1336,6 +1371,28 @@ export default function UserPanel() {
     );
   }
 
+  /* -------------------- GÜN BİTTİ / BUGÜN TAMAMLANDI -------------------- */
+  if (mode === "finishedToday") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-yellow-400 to-orange-600 px-3">
+        <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center">
+          <h2 className="text-2xl font-extrabold text-orange-700 mb-3">
+            Bugünün yarışmasını tamamladın 🎉
+          </h2>
+          <p className="text-gray-700 mb-4">
+            Yarın tekrar bekleriz! Kazandığın puanlar genel puanlarına eklendi.
+          </p>
+          <button
+            className="px-4 py-2 bg-cyan-600 text-white rounded-2xl hover:bg-cyan-800"
+            onClick={() => setMode("panel")}
+          >
+            Panele Dön
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   /* -------------------- DAHİ (kademeli final) -------------------- */
   if (mode === "genius") {
     return (
@@ -1344,7 +1401,7 @@ export default function UserPanel() {
           <h2 className="text-3xl font-extrabold text-orange-700 mb-3">
             Tamam artık ben sana daha ne sorayım, sen bir dahisin! 🎉
           </h2>
-          <p className="text-gray-700 mb-4">
+        <p className="text-gray-700 mb-4">
             10. seviyede de %80 başarıyı geçtin. Muhteşemsin!
           </p>
           <button
