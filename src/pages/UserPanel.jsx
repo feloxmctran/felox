@@ -1,5 +1,5 @@
 // src/pages/UserPanel.jsx
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 
 /* -------------------- Universal User Storage -------------------- */
 async function getFeloxUser() {
@@ -32,11 +32,8 @@ async function removeFeloxUser() {
 }
 
 /* -------------------- Config -------------------- */
-// Vite (import.meta.env) ve CRA (process.env) uyumlu okuma
 const apiUrl =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-  process.env.REACT_APP_API_URL ||
-  "https://felox-backend.onrender.com";
+  process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
 const PERIODS = [
   { key: "today", label: "Bugün" },
@@ -88,18 +85,14 @@ const Stars = ({ count = 1 }) => (
 );
 
 /* -------------------- Küçük yardımcı UI bileşenleri -------------------- */
-// Dinamik tailwind sınıfı yerine sabit harita (purge güvenli)
+/** 1.1 – Tailwind dinamik renk bugfix: map ile sabit sınıflar */
 const STATUS_COLORS = {
   emerald: "bg-emerald-50 text-emerald-700",
+  blue: "bg-blue-50 text-blue-700",
+  gray: "bg-gray-100 text-gray-700",
   red: "bg-red-50 text-red-700",
   orange: "bg-orange-50 text-orange-700",
-  purple: "bg-purple-50 text-purple-700",
-  blue: "bg-blue-50 text-blue-700",
-  cyan: "bg-cyan-50 text-cyan-700",
-  green: "bg-green-50 text-green-700",
-  yellow: "bg-yellow-50 text-yellow-700",
 };
-
 const StatusBadge = ({ text, color = "emerald" }) => (
   <span
     className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
@@ -240,6 +233,8 @@ export default function UserPanel() {
   const [feedbackActive, setFeedbackActive] = useState(false);
   const [showStars, setShowStars] = useState(false);
   const [starsCount, setStarsCount] = useState(1);
+  /** 1.5 – Timeout cleanup için ref */
+  const feedbackTimeoutRef = useRef(null);
 
   // Puanlarım (performans)
   const [showMyPerf, setShowMyPerf] = useState(false);
@@ -431,22 +426,25 @@ export default function UserPanel() {
   };
 
   /* -------------------- Kademeli Yarış -------------------- */
+  /** 1.3 – Soruları backend’ten al (tekrarsız & hızlı) */
   const loadLevelQuestions = async (level) => {
     setLoadingLevelQuestions(true);
     try {
-      // Daha hızlı: backend endpoint'i kullan (doğru cevapladıklarını zaten filtreler)
       const res = await fetch(
         `${apiUrl}/api/user/${user.id}/kademeli-questions?point=${level}&limit=200`
       );
-      const d = await res.json();
-      const all = d?.success ? d.questions || [] : [];
-      shuffleInPlace(all);
-
-      setQuestions(all);
-      setCurrentIdx(0);
-      setMode("solve");
-      setLadderActive(true);
-      setDailyActive(false);
+      const data = await res.json();
+      if (data.success) {
+        setQuestions(data.questions || []);
+        setCurrentIdx(0);
+        setMode("solve");
+        setLadderActive(true);
+        setDailyActive(false);
+      } else {
+        setInfo("Kademeli sorular alınamadı.");
+      }
+    } catch {
+      setInfo("Kademeli sorular alınamadı! (İletişim hatası)");
     } finally {
       setLoadingLevelQuestions(false);
     }
@@ -460,6 +458,7 @@ export default function UserPanel() {
   };
 
   const checkLadderProgress = () => {
+    // Eski yerel kontrol (artık kullanılmıyor ama kalsın):
     if (ladderAttempts >= 100) {
       const acc = ladderAttempts > 0 ? ladderCorrect / ladderAttempts : 0;
       if (acc >= 0.8) {
@@ -470,6 +469,28 @@ export default function UserPanel() {
           setLadderActive(false);
         }
       }
+    }
+  };
+
+  /** 1.4 – Seviye atlama kararını backend’e bırak */
+  const checkLadderProgressServer = async (point) => {
+    try {
+      const r = await fetch(
+        `${apiUrl}/api/user/${user.id}/kademeli-next?point=${point}`
+      );
+      const d = await r.json();
+      if (d?.success) {
+        if (d.status === "genius") {
+          setMode("genius");
+          setLadderActive(false);
+        } else if (d.can_level_up && d.next_point && d.next_point > point) {
+          setShowLevelUpPrompt(true);
+        } else {
+          await loadLevelQuestions(point);
+        }
+      }
+    } catch {
+      // sessiz
     }
   };
 
@@ -617,7 +638,8 @@ export default function UserPanel() {
           await refreshUserStats();
           await fetchDailyStatus();
 
-          setTimeout(async () => {
+          if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+          feedbackTimeoutRef.current = setTimeout(async () => {
             setFeedbackActive(false);
             setShowStars(false);
 
@@ -668,17 +690,17 @@ export default function UserPanel() {
           } else msg = "BİLEMEDİN";
 
           setFeedback(msg);
-          setStarsCount(starCount);
+          setStarsCount(starCount); // <-- BUG FIX
           setShowStars(stars && d.is_correct === 1);
           setFeedbackActive(true);
 
-          // Kademeli sayaçları güncelle
           if (ladderActive && cevap !== "bilmem") {
             setLadderAttempts((prev) => prev + 1);
             if (d.is_correct === 1) setLadderCorrect((prev) => prev + 1);
           }
 
-          setTimeout(() => {
+          if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+          feedbackTimeoutRef.current = setTimeout(() => {
             setFeedbackActive(false);
             setShowStars(false);
 
@@ -689,28 +711,11 @@ export default function UserPanel() {
             refreshUserStats();
 
             if (currentIdx < questions.length - 1) {
-              // Listede soru varsa sıradaki soruya geç
               setCurrentIdx((prev) => prev + 1);
             } else {
-              // Liste bitti: kademeli ise seviye kontrolünü anlık değerlendir
               if (ladderActive) {
-                const incAttempt = cevap !== "bilmem" ? 1 : 0;
-                const incCorrect = d.is_correct === 1 ? 1 : 0;
-                const nextAttempts = ladderAttempts + incAttempt;
-                const nextCorrect = ladderCorrect + incCorrect;
-                const acc = nextAttempts ? nextCorrect / nextAttempts : 0;
-
-                if (nextAttempts >= 100 && acc >= 0.8) {
-                  if (ladderLevel < 10) {
-                    setShowLevelUpPrompt(true);
-                  } else {
-                    setMode("genius");
-                    setLadderActive(false);
-                  }
-                } else {
-                  // Eşik sağlanmadıysa aynı seviyeden yeni set yükle
-                  loadLevelQuestions(ladderLevel);
-                }
+                // 1.4 – Seviye ilerleme kararını backend’e sor
+                checkLadderProgressServer(ladderLevel);
               } else {
                 setMode("thankyou");
               }
@@ -721,6 +726,29 @@ export default function UserPanel() {
         }
       })
       .catch(() => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
+  };
+
+  /** 1.2 – Günlük “Şimdilik bu kadar” için /api/daily/skip kullan */
+  const skipDaily = async () => {
+    if (!user || !dailyQuestion) return;
+    try {
+      const r = await fetch(`${apiUrl}/api/daily/skip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user.id,
+          question_id: dailyQuestion.id,
+          time_left_seconds: timeLeft,
+          max_time_seconds: 24,
+        }),
+      });
+      await r.json();
+      await fetchDailyStatus();
+      setDailyActive(false);
+      setMode("today");
+    } catch {
+      setInfo("Atlama (skip) başarısız oldu.");
+    }
   };
 
   /* -------------------- Çıkış -------------------- */
@@ -828,6 +856,15 @@ export default function UserPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePeriod, showLeaderboard]);
 
+  /** 1.5 – Unmount temizliği: feedback timeout’u sıfırla */
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) {
+        clearTimeout(feedbackTimeoutRef.current);
+      }
+    };
+  }, []);
+
   /* -------------------- Render -------------------- */
   if (!user)
     return (
@@ -847,9 +884,6 @@ export default function UserPanel() {
         ) : null}
       </div>
     );
-
-    const rankText =
-      todayRankLoading ? "—" : Number(todayRank) > 0 ? `${todayRank}.` : "-";
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
@@ -877,8 +911,14 @@ export default function UserPanel() {
               <Box title="Cevapladığın" value={answeredCount} />
               <Box
                 title="Bugün"
-                value={rankText}
-                caption={todayRankLoading || !(Number(todayRank) > 0) ? "" : "sıradasın"}
+                value={
+                  todayRankLoading
+                    ? "—"
+                    : todayRank != null
+                    ? `${todayRank}.`
+                    : "-"
+                }
+                caption={todayRankLoading ? "" : "sıradasın"}
               />
             </div>
           </div>
@@ -1076,9 +1116,6 @@ export default function UserPanel() {
     const finished = !!dailyStatus?.finished;
     const started = !finished && idx > 0;
 
-    const rankText =
-      todayRankLoading ? "—" : Number(todayRank) > 0 ? `${todayRank}.` : "-";
-
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
@@ -1108,19 +1145,18 @@ export default function UserPanel() {
                 </span>
               </StatCard>
 
-              {/* DURUM */}
+              {/* DURUM — 3.2 rozet rengi */}
               <StatCard label="Durum">
                 <StatusBadge
                   text={finished ? "Tamamlandı" : started ? "Devam Ediyor" : "Hazır"}
+                  color={finished ? "emerald" : started ? "blue" : "gray"}
                 />
               </StatCard>
 
               {/* BUGÜN (rank) */}
               <StatCard label="Bugün">
-                {rankText}
-                {Number(todayRank) > 0 && (
-                  <div className="text-[11px] text-gray-500 mt-0.5">sıradasın</div>
-                )}
+                {todayRankLoading ? "—" : todayRank != null ? `${todayRank}.` : "-"}
+                <div className="text-[11px] text-gray-500 mt-0.5">sıradasın</div>
               </StatCard>
 
               {/* PUAN (günün yarışı) */}
@@ -1272,9 +1308,7 @@ export default function UserPanel() {
           </div>
           <button
             className="mt-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-2xl hover:bg-gray-400"
-            onClick={() => {
-              handleAnswer("bilmem", { exitAfter: true });
-            }}
+            onClick={skipDaily}
           >
             Şimdilik bu kadar yeter
           </button>
