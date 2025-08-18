@@ -211,7 +211,7 @@ export default function UserPanel() {
   // Görünüm modu
   const [mode, setMode] = useState("panel"); // panel | today | solve | dailySolve | thankyou | genius
 
-  // Sorular (normal/serbest/kademeli)
+  // Sorular (normal/serbest/kademeli/kategori)
   const [questions, setQuestions] = useState([]);
 
   // Doğru sorular (id listesi)
@@ -263,7 +263,7 @@ export default function UserPanel() {
   const [dailyStatus, setDailyStatus] = useState(null); // {success, day_key, finished, index, size, question?}
   const [dailyQuestion, setDailyQuestion] = useState(null);
   const [dailyActive, setDailyActive] = useState(false);
-  const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyLoading, setDailyLoading] = useState(0);
   const [dailyError, setDailyError] = useState("");
   const [dailyPoints, setDailyPoints] = useState(0);
 
@@ -277,9 +277,14 @@ export default function UserPanel() {
     return idx >= 0 ? idx + 1 : null;
   }, [dailyLeaderboard, user?.id]);
 
-  // “Kalan Süre” kartı için global sayaç (today ekranında da canlı aksın)
-  const [liveDailyLeft, setLiveDailyLeft] = useState(null);       // number | null
-  const [liveDailyRunning, setLiveDailyRunning] = useState(false); // boolean
+  // Kategoriler (Modal)
+  const [showCategories, setShowCategories] = useState(false);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState("");
+  const [categories, setCategories] = useState([]); // {id,title,question_count}
+
+  // “Kalan Süre” için global state daha önce vardı ama
+  // today panelinde artık GÖSTERMİYORUZ. (Sayaç günlük soru ekranında çalışmaya devam ediyor.)
   const liveTimerRef = useRef(null);
 
   // Güvenli setState için
@@ -446,7 +451,7 @@ export default function UserPanel() {
   const fetchDailyLeaderboard = async (dayKey) => {
     try {
       const r = await fetch(`${apiUrl}/api/daily/leaderboard?day=${encodeURIComponent(dayKey)}`);
-      const d = await r.json();
+    const d = await r.json();
       if (!isMountedRef.current) return;
       if (d?.success && Array.isArray(d.leaderboard)) {
         setDailyLeaderboard(d.leaderboard.filter(Boolean));
@@ -481,6 +486,54 @@ export default function UserPanel() {
     setMode("solve");
     setLadderActive(false);
     setDailyActive(false);
+  };
+
+  /* -------------------- Kategoriler -------------------- */
+  const openCategories = async () => {
+    setCategories([]);
+    setCategoriesError("");
+    setCategoriesLoading(true);
+    setShowCategories(true);
+    try {
+      const r = await fetch(`${apiUrl}/api/user/approved-surveys`);
+      const d = await r.json();
+      if (d?.success) {
+        setCategories(Array.isArray(d.surveys) ? d.surveys : []);
+      } else {
+        setCategoriesError(d?.error || "Kategoriler alınamadı.");
+      }
+    } catch {
+      setCategoriesError("Bağlantı hatası.");
+    } finally {
+      setCategoriesLoading(false);
+    }
+  };
+
+  const startCategory = async (surveyId) => {
+    try {
+      const r = await fetch(`${apiUrl}/api/surveys/${surveyId}/questions`);
+      const d = await r.json();
+      if (d?.success) {
+        let qs = Array.isArray(d.questions) ? d.questions : [];
+        // daha önce doğru bilinenleri ele
+        qs = qs.filter((q) => !correctAnswered.includes(q.id));
+        if (!qs.length) {
+          alert("Bu kategoride çözecek yeni soru kalmadı.");
+          return;
+        }
+        shuffleInPlace(qs);
+        setQuestions(qs);
+        setCurrentIdx(0);
+        setMode("solve");
+        setShowCategories(false);
+        setLadderActive(false);
+        setDailyActive(false);
+      } else {
+        alert(d?.error || "Soru listesi alınamadı.");
+      }
+    } catch {
+      alert("Bağlantı hatası.");
+    }
   };
 
   /* -------------------- Kademeli Yarış -------------------- */
@@ -583,9 +636,6 @@ export default function UserPanel() {
         setDailyQuestion(d.question);
         setMode("dailySolve");
         setDailyActive(true);
-        // canlı sayaç: günlük ekrana da yansısın
-        setLiveDailyLeft(24);
-        setLiveDailyRunning(true);
         setLadderActive(false);
       } else if (d?.success && d.finished) {
         await fetchDailyStatus();
@@ -610,10 +660,6 @@ export default function UserPanel() {
     if (hasQuestion) {
       setTimeLeft(24);
       setTimerActive(true);
-      if (mode === "dailySolve") {
-        setLiveDailyLeft(24);
-        setLiveDailyRunning(true);
-      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIdx, mode, questions, dailyQuestion]);
@@ -630,45 +676,6 @@ export default function UserPanel() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLeft, timerActive]);
-
-  // dailySolve içindeyken global "Kalan Süre"yi senkron tut
-  useEffect(() => {
-    if (mode === "dailySolve" && typeof timeLeft === "number") {
-      setLiveDailyLeft(timeLeft);
-      if (timeLeft <= 0) {
-        setLiveDailyRunning(false);
-      }
-    }
-  }, [mode, timeLeft]);
-
-  // today ekranına dönüldüğünde, eğer liveDailyRunning açıksa sayaç akmaya devam etsin
-  useEffect(() => {
-    if (mode === "today" && liveDailyRunning && (liveDailyLeft ?? 0) > 0) {
-      if (liveTimerRef.current) clearInterval(liveTimerRef.current);
-      liveTimerRef.current = setInterval(() => {
-        setLiveDailyLeft((prev) => {
-          const v = (prev ?? 0) - 1;
-          if (v <= 0) {
-            if (liveTimerRef.current) clearInterval(liveTimerRef.current);
-            setLiveDailyRunning(false);
-            return 0;
-          }
-          return v;
-        });
-      }, 1000);
-      return () => {
-        if (liveTimerRef.current) {
-          clearInterval(liveTimerRef.current);
-          liveTimerRef.current = null;
-        }
-      };
-    } else {
-      if (liveTimerRef.current) {
-        clearInterval(liveTimerRef.current);
-        liveTimerRef.current = null;
-      }
-    }
-  }, [mode, liveDailyRunning, liveDailyLeft]);
 
   /* -------------------- Cevap işle -------------------- */
   const getSuccessMsg = (puan) => {
@@ -732,10 +739,6 @@ export default function UserPanel() {
           setShowStars(stars && d.is_correct === 1);
           setFeedbackActive(true);
 
-          // canlı süreyi kapat
-          setLiveDailyRunning(false);
-          setLiveDailyLeft(null);
-
           await refreshUserStats();
           await fetchDailyStatus();
 
@@ -767,7 +770,7 @@ export default function UserPanel() {
       return;
     }
 
-    // NORMAL / KADEMELİ
+    // NORMAL / KADEMELİ / KATEGORİ
     const q = questions[currentIdx];
     if (!q) {
       setInfo("Soru bulunamadı.");
@@ -839,7 +842,7 @@ export default function UserPanel() {
   /* --- Günlük: Şimdilik bu kadar (skip endpoint) --- */
   const handleDailySkip = async () => {
     try {
-      if (!dailyQuestion) return; // <-- koruma
+      if (!dailyQuestion) return;
       await fetch(`${apiUrl}/api/daily/skip`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -851,10 +854,6 @@ export default function UserPanel() {
         }),
       });
     } catch {}
-    // canlı süreyi kapat
-    setLiveDailyRunning(false);
-    setLiveDailyLeft(null);
-
     await fetchDailyStatus();
     setDailyActive(false);
     setMode("today");
@@ -1046,6 +1045,15 @@ export default function UserPanel() {
               {loadingLevelQuestions ? "Yükleniyor…" : "⚡ Kademeli Yarış"}
             </button>
 
+            {/* Kategoriler (geri geldi) */}
+            <button
+              className="w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-sky-600 to-cyan-500 hover:to-sky-800 text-white shadow-lg active:scale-95 transition"
+              onClick={openCategories}
+              title="Kategorileri gör"
+            >
+              <span className="mr-2">📚</span> Kategoriler
+            </button>
+
             {/* Rastgele Soru */}
             <button
               className="w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 hover:to-emerald-800 text-white shadow-lg active:scale-95 transition"
@@ -1151,6 +1159,58 @@ export default function UserPanel() {
             </div>
           )}
 
+          {/* Kategoriler Modali */}
+          {showCategories && (
+            <div className="fixed inset-0 z-40 bg-black/50 flex items-center justify-center p-3">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-4 relative">
+                <button
+                  className="absolute top-2 right-3 text-2xl text-gray-400 hover:text-red-500"
+                  onClick={() => setShowCategories(false)}
+                  title="Kapat"
+                >
+                  &times;
+                </button>
+                <h3 className="text-xl font-bold mb-3 text-sky-700 text-center">Kategoriler</h3>
+
+                {categoriesLoading ? (
+                  <div className="text-center text-gray-500 py-8">Yükleniyor…</div>
+                ) : categoriesError ? (
+                  <div className="text-center text-red-600 py-3">{categoriesError}</div>
+                ) : categories.length === 0 ? (
+                  <div className="text-center text-gray-500 py-6">Uygun kategori yok.</div>
+                ) : (
+                  <div className="max-h-[60vh] overflow-auto rounded-xl border">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-sky-50 sticky top-0">
+                        <tr>
+                          <th className="p-2 border text-left">Başlık</th>
+                          <th className="p-2 border">Soru</th>
+                          <th className="p-2 border">İşlem</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {categories.map((s) => (
+                          <tr key={s.id}>
+                            <td className="p-2 border">{s.title}</td>
+                            <td className="p-2 border text-center">{s.question_count ?? "-"}</td>
+                            <td className="p-2 border text-center">
+                              <button
+                                className="px-2 py-1 rounded-xl text-xs bg-sky-600 text-white hover:bg-sky-800"
+                                onClick={() => startCategory(s.id)}
+                              >
+                                Başla
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Puanlarım modalı */}
           <PointsTable
             show={showMyPerf}
@@ -1212,6 +1272,7 @@ export default function UserPanel() {
   /* -------------------- GÜNÜN YARIŞMASI (dashboard) -------------------- */
   if (mode === "today") {
     const idx = Number(dailyStatus?.index ?? 0);
+    const size = Number.isFinite(Number(dailyStatus?.size)) ? Number(dailyStatus.size) : 0;
     const finished = !!dailyStatus?.finished;
     const started = !finished && idx > 0;
 
@@ -1238,29 +1299,21 @@ export default function UserPanel() {
 
             {/* Üst kutular */}
             <div className="w-full flex gap-3 mt-3 flex-wrap">
-              {/* Cevapladığın */}
+              {/* Cevapladığın (sadece sayı) */}
               <StatCard label="Cevapladığın">
                 <span className="font-mono">{idx}</span>
                 <div className="text-[11px] text-gray-500 mt-0.5">soru</div>
               </StatCard>
 
-              {/* Puan (Durum yerine) */}
+              {/* Puan */}
               <StatCard label="Puan">
                 <span className="font-mono">{dailyPoints}</span>
               </StatCard>
 
-              {/* Günlük Sıra (Bugün kutusu artık dailyRank) */}
+              {/* Günlük Sıra */}
               <StatCard label="Bugün">
                 {dailyRank ? `${dailyRank}.` : "—"}
                 <div className="text-[11px] text-gray-500 mt-0.5">sıradasın</div>
-              </StatCard>
-
-              {/* Kalan Süre */}
-              <StatCard label="Kalan Süre">
-                {liveDailyRunning && (liveDailyLeft ?? 0) > 0 ? `${liveDailyLeft}s` : "—"}
-                <div className="text-[11px] text-gray-500 mt-0.5">
-                  {liveDailyRunning ? "canlı" : ""}
-                </div>
               </StatCard>
             </div>
           </div>
@@ -1341,7 +1394,7 @@ export default function UserPanel() {
     );
   }
 
-  /* -------------------- SORU ÇÖZ (NORMAL/KADEMELİ) -------------------- */
+  /* -------------------- SORU ÇÖZ (NORMAL/KADEMELİ/KATEGORİ) -------------------- */
   if (mode === "solve" && questions.length > 0) {
     const q = questions[currentIdx];
     return (
