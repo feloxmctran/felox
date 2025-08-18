@@ -153,33 +153,33 @@ function PointsTable({ show, onClose, loading, error, data }) {
               <tbody>
                 {data.map((r, i) => (
                   <tr
-                    key={r.survey_id || i}
+                    key={r?.survey_id ?? i}
                     className={i === 0 ? "bg-green-50" : i === data.length - 1 ? "bg-red-50" : ""}
                   >
-                    <td className="p-2 border text-left">{r.title}</td>
+                    <td className="p-2 border text-left">{r?.title}</td>
                     <td className="p-2 border text-center">
-                      {r.attempted}/{r.answered}
+                      {r?.attempted}/{r?.answered}
                     </td>
-                    <td className="p-2 border text-center">{r.correct}</td>
-                    <td className="p-2 border text-center">{r.wrong}</td>
-                    <td className="p-2 border text-center">{r.bilmem}</td>
+                    <td className="p-2 border text-center">{r?.correct}</td>
+                    <td className="p-2 border text-center">{r?.wrong}</td>
+                    <td className="p-2 border text-center">{r?.bilmem}</td>
                     <td
                       className={`p-2 border text-center ${
-                        (r.net_points || 0) > 0
+                        (r?.net_points || 0) > 0
                           ? "text-emerald-700 font-bold"
-                          : (r.net_points || 0) < 0
+                          : (r?.net_points || 0) < 0
                           ? "text-red-600 font-bold"
                           : ""
                       }`}
                     >
-                      {r.net_points}
+                      {r?.net_points}
                     </td>
                     <td className="p-2 border text-center font-bold">
-                      {typeof r.score_percent === "number"
+                      {typeof r?.score_percent === "number"
                         ? `${r.score_percent}%`
                         : (() => {
-                            const den = Number(r.attempted) || 0;
-                            const dogru = Number(r.correct) || 0;
+                            const den = Number(r?.attempted) || 0;
+                            const dogru = Number(r?.correct) || 0;
                             const pct = den > 0 ? Math.round((dogru / den) * 100) : 0;
                             return `${pct}%`;
                           })()}
@@ -199,11 +199,11 @@ function PointsTable({ show, onClose, loading, error, data }) {
 export default function UserPanel() {
   const [user, setUser] = useState(null);
 
-  // Kullanıcı skor ve durum (genel)
+  // Kullanıcı skor ve durum
   const [totalPoints, setTotalPoints] = useState(0);
   const [answeredCount, setAnsweredCount] = useState(0);
 
-  // BUGÜN (genel) sıralaması
+  // BUGÜN sıralaması
   const [todayRank, setTodayRank] = useState(null);
   const [todayRankLoading, setTodayRankLoading] = useState(false);
 
@@ -265,15 +265,9 @@ export default function UserPanel() {
   const [dailyLoading, setDailyLoading] = useState(false);
   const [dailyError, setDailyError] = useState("");
   const [dailyPoints, setDailyPoints] = useState(0);
-  const [dailyRank, setDailyRank] = useState(null); // GÜNLÜK sıralama
 
   // Günlük Puan Durumu (Leaderboard)
   const [dailyLeaderboard, setDailyLeaderboard] = useState([]);
-
-  // Günlük canlı sayaç (ekrandan bağımsız)
-  const [liveDailyLeft, setLiveDailyLeft] = useState(24);
-  const [liveDailyRunning, setLiveDailyRunning] = useState(false);
-  const liveTimerRef = useRef(null);
 
   // Güvenli setState için
   const feedbackTimeoutRef = useRef(null);
@@ -282,7 +276,6 @@ export default function UserPanel() {
     return () => {
       isMountedRef.current = false;
       if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
-      if (liveTimerRef.current) clearInterval(liveTimerRef.current);
     };
   }, []);
 
@@ -350,27 +343,29 @@ export default function UserPanel() {
       .then((res) => res.json())
       .then((data) => {
         if (!isMountedRef.current) return;
-        if (data.success) {
+        if (data?.success && Array.isArray(data.answers)) {
           setCorrectAnswered(
             data.answers
-              .filter((ans) => ans.is_correct === 1)
+              .filter((ans) => ans?.is_correct === 1 && ans?.question_id != null)
               .map((ans) => ans.question_id)
           );
         }
-      });
+      })
+      .catch(() => {});
 
     // Toplam puan ve cevap sayısı
     fetch(`${apiUrl}/api/user/${user.id}/total-points`)
       .then((res) => res.json())
       .then((data) => {
         if (!isMountedRef.current) return;
-        if (data.success) {
-          setTotalPoints(data.totalPoints);
-          setAnsweredCount(data.answeredCount);
+        if (data?.success) {
+          setTotalPoints(data.totalPoints ?? 0);
+          setAnsweredCount(data.answeredCount ?? 0);
         }
-      });
+      })
+      .catch(() => {});
 
-    // BUGÜN sıralaması (genel)
+    // BUGÜN sıralaması
     setTodayRankLoading(true);
     fetch(`${apiUrl}/api/user/${user.id}/rank?period=today`)
       .then((r) => r.json())
@@ -393,11 +388,13 @@ export default function UserPanel() {
         .then((res) => res.json())
         .then((data) => {
           if (!isMountedRef.current) return;
-          const filtered = (data.leaderboard || []).filter(
-            (u) => (u.total_points || 0) > 0
+          const raw = Array.isArray(data?.leaderboard) ? data.leaderboard : [];
+          const filtered = raw.filter(
+            (u) => u && (u.total_points || 0) > 0
           );
           setLeaderboards((prev) => ({ ...prev, [p.key]: filtered }));
-        });
+        })
+        .catch(() => {});
     });
 
     // Avatar için en iyi başlık ve yüzdesi
@@ -406,9 +403,9 @@ export default function UserPanel() {
       .then((d) => {
         if (!isMountedRef.current) return;
         if (d?.success && Array.isArray(d.performance) && d.performance.length) {
-          setBestTitle(d.performance[0].title || "");
+          setBestTitle(d.performance[0]?.title || "");
           const pct =
-            typeof d.performance[0].score_percent === "number"
+            typeof d.performance[0]?.score_percent === "number"
               ? d.performance[0].score_percent
               : null;
           setBestTitlePercent(pct);
@@ -443,21 +440,12 @@ export default function UserPanel() {
       if (!isMountedRef.current) return;
       if (d?.success && Array.isArray(d.leaderboard)) {
         setDailyLeaderboard(d.leaderboard.filter(Boolean));
-        // günlük sıranı ve puanını çıkar
-        const myIndex = d.leaderboard.findIndex((u) => String(u.id) === String(user.id));
-        setDailyRank(myIndex >= 0 ? myIndex + 1 : null);
-        const me = myIndex >= 0 ? d.leaderboard[myIndex] : null;
-        setDailyPoints(me?.total_points ?? 0);
       } else {
         setDailyLeaderboard([]);
-        setDailyRank(null);
-        setDailyPoints(0);
       }
     } catch {
       if (!isMountedRef.current) return;
       setDailyLeaderboard([]);
-      setDailyRank(null);
-      setDailyPoints(0);
     }
   };
 
@@ -466,15 +454,15 @@ export default function UserPanel() {
     const res = await fetch(`${apiUrl}/api/user/approved-surveys`);
     const data = await res.json();
     let allQuestions = [];
-    for (const survey of data.surveys || []) {
-      const qRes = await fetch(`${apiUrl}/api/surveys/${survey.id}/questions`);
-      const qData = await qRes.json();
-      if (qData.success) {
+    for (const survey of data?.surveys || []) {
+      const qRes = await fetch(`${apiUrl}/api/surveys/${survey.id}/questions`).catch(() => null);
+      const qData = qRes ? await qRes.json().catch(() => null) : null;
+      if (qData?.success && Array.isArray(qData.questions)) {
         allQuestions = allQuestions.concat(qData.questions);
       }
     }
     const filtered = allQuestions.filter(
-      (q) => !correctAnswered.includes(q.id)
+      (q) => q && !correctAnswered.includes(q.id)
     );
     shuffleInPlace(filtered);
 
@@ -493,7 +481,7 @@ export default function UserPanel() {
         `${apiUrl}/api/user/${user.id}/kademeli-questions?point=${level}`
       );
       const d = await r.json();
-      const all = Array.isArray(d?.questions) ? d.questions : [];
+      const all = Array.isArray(d?.questions) ? d.questions.filter(Boolean) : [];
 
       setQuestions(all);
       setCurrentIdx(0);
@@ -535,6 +523,21 @@ export default function UserPanel() {
   };
 
   /* -------------------- Günün Yarışması: durum & puan -------------------- */
+  async function fetchMyDailyPoints(dayKey) {
+    if (!user || !dayKey) return;
+    try {
+      const r = await fetch(`${apiUrl}/api/daily/leaderboard?day=${encodeURIComponent(dayKey)}`);
+      const d = await r.json();
+      if (!isMountedRef.current) return;
+      if (d?.success && Array.isArray(d.leaderboard)) {
+        const me = d.leaderboard.find((u) => String(u?.id) === String(user?.id));
+        setDailyPoints(me?.total_points || 0);
+      }
+    } catch {
+      /* sessizce geç */
+    }
+  }
+
   async function fetchDailyStatus() {
     if (!user) return;
     try {
@@ -544,11 +547,8 @@ export default function UserPanel() {
       if (d?.success) {
         setDailyStatus(d);
         if (d.day_key) {
-          await fetchDailyLeaderboard(d.day_key);
-        }
-        // bitmişse canlı sayaç durur
-        if (d.finished) {
-          setLiveDailyRunning(false);
+          fetchMyDailyPoints(d.day_key);
+          fetchDailyLeaderboard(d.day_key);
         }
       } else {
         setDailyStatus(null);
@@ -572,9 +572,6 @@ export default function UserPanel() {
         setMode("dailySolve");
         setDailyActive(true);
         setLadderActive(false);
-        // canlı sayaç başlat
-        setLiveDailyLeft(24);
-        setLiveDailyRunning(true);
       } else if (d?.success && d.finished) {
         await fetchDailyStatus();
       } else {
@@ -589,9 +586,7 @@ export default function UserPanel() {
     }
   }
 
-  /* -------------------- Zamanlayıcılar -------------------- */
-
-  // Soru ekranındaki (solve/dailySolve) ana sayaç
+  /* -------------------- Zamanlayıcı -------------------- */
   useEffect(() => {
     const hasQuestion =
       (mode === "solve" && questions.length > 0) ||
@@ -615,25 +610,6 @@ export default function UserPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLeft, timerActive]);
 
-  // GÜNLÜK canlı sayaç: ekran bağımsız (today sayfasında da akar)
-  useEffect(() => {
-    if (liveTimerRef.current) clearInterval(liveTimerRef.current);
-    if (liveDailyRunning) {
-      liveTimerRef.current = setInterval(() => {
-        setLiveDailyLeft((prev) => (prev > 0 ? prev - 1 : 0));
-      }, 1000);
-    }
-    return () => {
-      if (liveTimerRef.current) clearInterval(liveTimerRef.current);
-    };
-  }, [liveDailyRunning]);
-
-  useEffect(() => {
-    if (liveDailyLeft <= 0 && liveDailyRunning) {
-      setLiveDailyRunning(false); // 0’a indiğinde durdur
-    }
-  }, [liveDailyLeft, liveDailyRunning]);
-
   /* -------------------- Cevap işle -------------------- */
   const getSuccessMsg = (puan) => {
     if (puan <= 3) return "TEBRİKLER";
@@ -643,12 +619,14 @@ export default function UserPanel() {
   };
 
   const refreshUserStats = async () => {
-    const r = await fetch(`${apiUrl}/api/user/${user.id}/total-points`);
-    const data = await r.json();
-    if (data.success) {
-      setTotalPoints(data.totalPoints);
-      setAnsweredCount(data.answeredCount);
-    }
+    try {
+      const r = await fetch(`${apiUrl}/api/user/${user.id}/total-points`);
+      const data = await r.json();
+      if (data?.success) {
+        setTotalPoints(data.totalPoints ?? 0);
+        setAnsweredCount(data.answeredCount ?? 0);
+      }
+    } catch {}
     try {
       const d = await fetch(`${apiUrl}/api/user/${user.id}/rank?period=today`).then((x) =>
         x.json()
@@ -666,7 +644,7 @@ export default function UserPanel() {
     setInfo("");
 
     // GÜNLÜK YARIŞMASI
-    if (mode === "dailySolve" && dailyActive && dailyQuestion) {
+    if (mode === "dailySolve" && dailyActive && dailyQuestion && dailyQuestion?.id != null) {
       const q = dailyQuestion;
       fetch(`${apiUrl}/api/daily/answer`, {
         method: "POST",
@@ -685,7 +663,7 @@ export default function UserPanel() {
           let stars = false;
           let starCount = 1;
           if (cevap === "bilmem") msg = "ÖĞREN DE GEL";
-          else if (d.is_correct === 1) {
+          else if (d?.is_correct === 1) {
             msg = getSuccessMsg(q.point);
             stars = true;
             starCount = Math.max(1, Math.min(q.point || 1, 10));
@@ -693,10 +671,8 @@ export default function UserPanel() {
 
           setFeedback(msg);
           setStarsCount(starCount);
-          setShowStars(stars && d.is_correct === 1);
+          setShowStars(stars && d?.is_correct === 1);
           setFeedbackActive(true);
-
-          setLiveDailyRunning(false); // cevap geldi: canlı sayaç durur
 
           await refreshUserStats();
           await fetchDailyStatus();
@@ -707,8 +683,8 @@ export default function UserPanel() {
             setFeedbackActive(false);
             setShowStars(false);
 
-            const r2 = await fetch(`${apiUrl}/api/daily/status?user_id=${user.id}`);
-            const nx = await r2.json();
+            const r2 = await fetch(`${apiUrl}/api/daily/status?user_id=${user.id}`).catch(()=>null);
+            const nx = r2 ? await r2.json().catch(()=>null) : null;
 
             if (!isMountedRef.current) return;
 
@@ -717,10 +693,6 @@ export default function UserPanel() {
               if (opts.exitAfter) {
                 setDailyActive(false);
                 setMode("today");
-              } else {
-                // yeni soruya girilecekse canlı sayaç tekrar 24'ten başlasın
-                setLiveDailyLeft(24);
-                setLiveDailyRunning(true);
               }
             } else {
               await fetchDailyStatus();
@@ -735,6 +707,12 @@ export default function UserPanel() {
 
     // NORMAL / KADEMELİ
     const q = questions[currentIdx];
+    if (!q || q?.id == null) {
+      // beklenmedik durum; güvenli çık
+      setMode("thankyou");
+      return;
+    }
+
     fetch(`${apiUrl}/api/answers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -748,7 +726,7 @@ export default function UserPanel() {
     })
       .then((res) => res.json())
       .then((d) => {
-        if (d.success) {
+        if (d?.success) {
           let msg = "";
           let stars = false;
           if (cevap === "bilmem") msg = "ÖĞREN DE GEL";
@@ -774,7 +752,7 @@ export default function UserPanel() {
             setShowStars(false);
 
             if (d.is_correct === 1) {
-              setCorrectAnswered((prev) => [...prev, q.id]);
+              setCorrectAnswered((prev) => (q?.id ? [...prev, q.id] : prev));
             }
 
             refreshUserStats();
@@ -790,7 +768,7 @@ export default function UserPanel() {
             }
           }, 3200);
         } else {
-          setInfo(d.error || "Cevap kaydedilemedi!");
+          setInfo(d?.error || "Cevap kaydedilemedi!");
         }
       })
       .catch(() => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
@@ -799,7 +777,13 @@ export default function UserPanel() {
   /* --- Günlük: Şimdilik bu kadar (skip endpoint) --- */
   const handleDailySkip = async () => {
     try {
-      if (!dailyQuestion) return;
+      if (!dailyQuestion || dailyQuestion?.id == null) {
+        // soru yoksa doğrudan dön
+        await fetchDailyStatus();
+        setDailyActive(false);
+        setMode("today");
+        return;
+      }
       await fetch(`${apiUrl}/api/daily/skip`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -811,7 +795,6 @@ export default function UserPanel() {
         }),
       });
     } catch {}
-    setLiveDailyRunning(false); // skip: canlı sayaç durur
     await fetchDailyStatus();
     setDailyActive(false);
     setMode("today");
@@ -834,17 +817,17 @@ export default function UserPanel() {
     try {
       const res = await fetch(`${apiUrl}/api/user/${user.id}/performance`);
       const data = await res.json();
-      if (data.success) {
-        const list = data.performance || [];
+      if (data?.success) {
+        const list = Array.isArray(data.performance) ? data.performance : [];
         setMyPerf(list);
         if (list.length) {
-          setBestTitle(list[0].title || "");
+          setBestTitle(list[0]?.title || "");
           const pct =
-            typeof list[0].score_percent === "number" ? list[0].score_percent : null;
+            typeof list[0]?.score_percent === "number" ? list[0].score_percent : null;
           setBestTitlePercent(pct);
         }
       } else {
-        setMyPerfError(data.error || "Veri alınamadı");
+        setMyPerfError(data?.error || "Veri alınamadı");
       }
     } catch (e) {
       setMyPerfError("Bağlantı hatası");
@@ -907,8 +890,9 @@ export default function UserPanel() {
     try {
       const res = await fetch(`${apiUrl}/api/leaderboard?period=${periodKey}`);
       const data = await res.json();
-      const filtered = (data.leaderboard || []).filter(
-        (u) => (u.total_points || 0) > 0
+      const raw = Array.isArray(data?.leaderboard) ? data.leaderboard : [];
+      const filtered = raw.filter(
+        (u) => u && (u.total_points || 0) > 0
       );
       setLeaderboards((prev) => ({ ...prev, [periodKey]: filtered }));
     } catch {}
@@ -1087,12 +1071,12 @@ export default function UserPanel() {
                       leaderboards[activePeriod].slice(0, 10).map((u, i) => (
                         <tr
                           key={`${u?.id ?? "row"}-${i}`}
-                          className={u.id === user.id ? "bg-yellow-100 font-bold" : ""}
+                          className={String(u?.id) === String(user?.id) ? "bg-yellow-100 font-bold" : ""}
                         >
                           <td className="p-1 border">{i + 1}</td>
-                          <td className="p-1 border">{u.ad}</td>
-                          <td className="p-1 border">{u.soyad}</td>
-                          <td className="p-1 border">{u.total_points}</td>
+                          <td className="p-1 border">{u?.ad ?? "-"}</td>
+                          <td className="p-1 border">{u?.soyad ?? "-"}</td>
+                          <td className="p-1 border">{u?.total_points ?? 0}</td>
                         </tr>
                       ))
                     ) : (
@@ -1168,12 +1152,10 @@ export default function UserPanel() {
 
   /* -------------------- GÜNÜN YARIŞMASI (dashboard) -------------------- */
   if (mode === "today") {
-    const idx = Number(dailyStatus?.index ?? 0);          // cevapladığın soru
+    const idx = Number(dailyStatus?.index ?? 0);
+    const size = Number.isFinite(Number(dailyStatus?.size)) ? Number(dailyStatus.size) : 0;
     const finished = !!dailyStatus?.finished;
     const started = !finished && idx > 0;
-
-    // today ekranında görünür kalan süre (canlı)
-    const previewSeconds = liveDailyRunning ? liveDailyLeft : 24;
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
@@ -1194,38 +1176,33 @@ export default function UserPanel() {
             <h1 className="text-2xl font-extrabold text-cyan-700 text-center">
               {user.ad} {user.soyad}
             </h1>
-            <div className="text-sm text-gray-600 -mt-1 mb-1">
-              Günün Yarışmasında başarılar dileriz
-            </div>
 
             {/* Üst kutular */}
-            <div className="w-full flex gap-3 mt-2 flex-wrap">
-              {/* CEVAPLANAN */}
-              <StatCard label="Cevapladığın">
-                <span className="font-mono">{idx}</span>
-                <div className="text-[11px] text-gray-500 mt-0.5">soru</div>
+            <div className="w-full flex gap-3 mt-3 flex-wrap">
+              {/* İLERLEME */}
+              <StatCard label="İlerleme">
+                <span className="font-mono">
+                  {idx} / {size}
+                </span>
+              </StatCard>
+
+              {/* DURUM */}
+              <StatCard label="Durum">
+                <StatusBadge
+                  color="blue"
+                  text={finished ? "Tamamlandı" : started ? "Devam Ediyor" : "Hazır"}
+                />
+              </StatCard>
+
+              {/* BUGÜN (rank) */}
+              <StatCard label="Bugün">
+                {todayRankLoading ? "—" : todayRank != null ? `${todayRank}.` : "-"}
+                <div className="text-[11px] text-gray-500 mt-0.5">sıradasın</div>
               </StatCard>
 
               {/* PUAN (günün yarışı) */}
-              <StatCard label="Puan">
-                {dailyPoints}
-              </StatCard>
-
-              {/* BUGÜN (günün yarışması sırası) */}
-              <StatCard label="Bugün">
-                {dailyRank != null ? `${dailyRank}.` : "-"}
-                <div className="text-[11px] text-gray-500 mt-0.5">sıradasın</div>
-              </StatCard>
+              <StatCard label="Puan">{dailyPoints}</StatCard>
             </div>
-          </div>
-
-          {/* GENİŞ KART: Kalan Süre */}
-          <div className="w-full mt-4 rounded-2xl bg-white/80 shadow p-4 text-center h-[91px]">
-            <div className="text-xs text-gray-500 mb-1">Kalan Süre</div>
-            <div className="text-2xl font-extrabold text-emerald-700 leading-none">
-              {previewSeconds}
-            </div>
-            <div className="text-[11px] text-gray-500 mt-0.5">saniye</div>
           </div>
 
           {/* Butonlar */}
@@ -1264,7 +1241,7 @@ export default function UserPanel() {
                     {(Array.isArray(dailyLeaderboard) ? dailyLeaderboard.filter(Boolean) : []).map((u, i) => (
                       <tr
                         key={`${u?.id ?? "row"}-${i}`}
-                        className={String(u?.id) === String(user.id) ? "bg-yellow-50" : ""}
+                        className={String(u?.id) === String(user?.id) ? "bg-yellow-50" : ""}
                       >
                         <td className="p-2 border text-center">{i + 1}</td>
                         <td className="p-2 border">{u?.ad ?? "-"}</td>
@@ -1321,9 +1298,9 @@ export default function UserPanel() {
           <div className="text-4xl font-mono text-emerald-700 mb-2 select-none">
             {timeLeft}
           </div>
-          <div className="text-lg font-semibold mb-4">{q.question}</div>
+          <div className="text-lg font-semibold mb-4">{q?.question}</div>
           <div className="text-2xl font-bold text-cyan-600 mb-3">
-            Puan: {q.point}
+            Puan: {q?.point}
           </div>
           <div className="flex flex-col gap-3 mb-4">
             <button
@@ -1382,9 +1359,9 @@ export default function UserPanel() {
           <div className="text-4xl font-mono text-emerald-700 mb-2 select-none">
             {timeLeft}
           </div>
-          <div className="text-lg font-semibold mb-4">{q.question}</div>
+          <div className="text-lg font-semibold mb-4">{q?.question}</div>
           <div className="text-2xl font-bold text-cyan-600 mb-3">
-            Puan: {q.point}
+            Puan: {q?.point}
           </div>
           <div className="flex flex-col gap-3 mb-4">
             <button
