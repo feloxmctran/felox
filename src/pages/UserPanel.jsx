@@ -51,6 +51,26 @@ function shuffleInPlace(arr) {
   return arr;
 }
 
+/* --- Performance sort helper: net_points DESC, then success % DESC --- */
+const sortPerformanceRows = (rows = []) => {
+  const getPct = (r) =>
+    typeof r.score_percent === "number"
+      ? r.score_percent
+      : (Number(r.attempted) || 0) > 0
+      ? Math.round(((Number(r.correct) || 0) * 100) / Number(r.attempted))
+      : 0;
+
+  return [...rows].sort((A, B) => {
+    const an = Number(A.net_points) || 0;
+    const bn = Number(B.net_points) || 0;
+    if (bn !== an) return bn - an; // 1) Net puan
+    const ap = getPct(A);
+    const bp = getPct(B);
+    if (bp !== ap) return bp - ap; // 2) Başarı yüzdesi
+    return (A.title || "").localeCompare(B.title || "", "tr"); // 3) Alfabetik
+  });
+};
+
 /* -------------------- Stars (puan kadar) -------------------- */
 const Stars = ({ count = 1 }) => (
   <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
@@ -400,16 +420,20 @@ export default function UserPanel() {
         });
     });
 
-    // Avatar için en iyi başlık ve yüzdesi
+    // Avatar için en iyi başlık ve yüzdesi (sıralı)
     fetch(`${apiUrl}/api/user/${user.id}/performance`)
       .then((r) => r.json())
       .then((d) => {
         if (!isMountedRef.current) return;
         if (d?.success && Array.isArray(d.performance) && d.performance.length) {
-          setBestTitle(d.performance[0].title || "");
+          const sorted = sortPerformanceRows(d.performance);
+          const top = sorted[0];
+          setBestTitle(top.title || "");
           const pct =
-            typeof d.performance[0].score_percent === "number"
-              ? d.performance[0].score_percent
+            typeof top.score_percent === "number"
+              ? top.score_percent
+              : (Number(top.attempted) || 0) > 0
+              ? Math.round(((Number(top.correct) || 0) * 100) / Number(top.attempted))
               : null;
           setBestTitlePercent(pct);
         } else {
@@ -861,11 +885,16 @@ export default function UserPanel() {
       const data = await res.json();
       if (data.success) {
         const list = data.performance || [];
-        setMyPerf(list);
-        if (list.length) {
-          setBestTitle(list[0].title || "");
+        const sorted = sortPerformanceRows(list);
+        setMyPerf(sorted);
+        if (sorted.length) {
+          setBestTitle(sorted[0].title || "");
           const pct =
-            typeof list[0].score_percent === "number" ? list[0].score_percent : null;
+            typeof sorted[0].score_percent === "number"
+              ? sorted[0].score_percent
+              : (Number(sorted[0].attempted) || 0) > 0
+              ? Math.round(((Number(sorted[0].correct) || 0) * 100) / Number(sorted[0].attempted))
+              : null;
           setBestTitlePercent(pct);
         }
       } else {
@@ -1028,7 +1057,7 @@ export default function UserPanel() {
               {loadingLevelQuestions ? "Yükleniyor…" : "⚡ Kademeli Yarış"}
             </button>
 
-            {/* Kategoriler (geri geldi) */}
+            {/* Kategoriler */}
             <button
               className="w-full py-3 rounded-2xl font-bold bg-cyan-600 hover:bg-cyan-800 text-white shadow-lg active:scale-95 transition"
               onClick={() => { fetchSurveys(); setMode("list"); }}
@@ -1055,8 +1084,6 @@ export default function UserPanel() {
             >
               <span className="mr-2">🏆</span> Genel Puan Tablosu
             </button>
-
-            {/* Puanlarım butonu panelden kaldırıldı → List ekranının en üstüne taşındı */}
           </div>
 
           <button
@@ -1133,14 +1160,7 @@ export default function UserPanel() {
             </div>
           )}
 
-          {/* Puanlarım modalı */}
-          <PointsTable
-            show={showMyPerf}
-            onClose={() => setShowMyPerf(false)}
-            loading={myPerfLoading}
-            error={myPerfError}
-            data={myPerf}
-          />
+          {/* (Not: Puanlarım modalı artık Kategoriler ekranından açılıyor) */}
 
           {/* Kademeli: seviye artırım promptu */}
           {showLevelUpPrompt && (
@@ -1191,21 +1211,23 @@ export default function UserPanel() {
     );
   }
 
-  /* -------------------- KATEGORİ LİSTESİ (kompakt & mobil) -------------------- */
+  /* -------------------- KATEGORİ LİSTESİ (kompakt + "Puanlarım" en üstte) -------------------- */
   if (mode === "list") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
-          {/* Üst bar: başlık + PUANLARIM */}
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xl font-extrabold text-cyan-700">Onaylı Kategoriler</h2>
-          </div>
+          <h2 className="text-xl font-extrabold text-cyan-700 text-center mb-3">
+            Onaylı Kategoriler
+          </h2>
 
-          {/* Puanlarım: en üstte, tek tuş */}
+          {/* Puanlarım butonu (üstte) */}
           <button
-            className="w-full mb-3 py-2 rounded-2xl font-bold bg-gradient-to-r from-purple-600 to-fuchsia-500 hover:to-purple-800 text-white shadow active:scale-95 transition"
-            onClick={() => { setShowMyPerf(true); loadMyPerformance(); }}
-            title="Kategori bazında kendi performansını gör"
+            className="w-full mb-4 py-3 rounded-2xl font-bold bg-gradient-to-r from-purple-600 to-fuchsia-500 hover:to-purple-800 text-white shadow-lg active:scale-95 transition"
+            onClick={() => {
+              setShowMyPerf(true);
+              loadMyPerformance();
+            }}
+            title="Kategori bazında kendi performansın"
           >
             <span className="mr-2">📈</span> Puanlarım
           </button>
@@ -1217,29 +1239,26 @@ export default function UserPanel() {
               {surveys.map((s) => (
                 <div
                   key={s.id}
-                  className="rounded-xl border bg-white shadow-sm p-3 flex items-center justify-between"
+                  className="rounded-xl border border-gray-200 bg-white shadow-sm p-3"
                 >
-                  {/* solda başlık & info - ikon kaldırıldı */}
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-gray-800 truncate">{s.title}</div>
-                    <div className="text-xs text-gray-600 mt-0.5">
-                      Soru: <b>{s.question_count ?? "?"}</b>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[15px] font-semibold text-gray-800 line-clamp-2">
+                      {s.title}
                     </div>
+                    <span className="shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-700 border border-cyan-100">
+                      {(s.question_count ?? "?")} soru
+                    </span>
                   </div>
-
-                  {/* sağda aksiyonlar (kompakt pill butonlar) */}
-                  <div className="flex items-center gap-2 pl-3 shrink-0">
+                  <div className="mt-2 flex gap-2">
                     <button
-                      className="px-3 py-1.5 rounded-full bg-cyan-600 text-white text-xs font-bold hover:bg-cyan-800 active:scale-95"
+                      className="flex-1 px-3 py-1.5 rounded-xl bg-cyan-600 text-white text-sm font-bold hover:bg-cyan-800 active:scale-95"
                       onClick={() => fetchQuestions(s.id)}
-                      title="Soruları çöz"
                     >
                       Soruları Çöz
                     </button>
                     <button
-                      className="px-3 py-1.5 rounded-full bg-orange-500 text-white text-xs font-bold hover:bg-orange-700 active:scale-95"
+                      className="px-3 py-1.5 rounded-xl bg-orange-500 text-white text-sm font-bold hover:bg-orange-700 active:scale-95"
                       onClick={() => fetchSurveyLeaderboard(s.id)}
-                      title="Bu kategori puan tablosu"
                     >
                       Puan Tablosu
                     </button>
@@ -1305,7 +1324,7 @@ export default function UserPanel() {
             </div>
           )}
 
-          {/* Puanlarım modalı (buradan da açılıyor) */}
+          {/* Puanlarım modalı (buradan açılıyor) */}
           <PointsTable
             show={showMyPerf}
             onClose={() => setShowMyPerf(false)}
