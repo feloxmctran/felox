@@ -267,6 +267,82 @@ export default function UserPanel() {
   // Avatar manifest
   const [avatarManifest, setAvatarManifest] = useState(null);
 
+  // Günün Yarışması
+  const [dailyStatus, setDailyStatus] = useState(null); // {success, day_key, finished, index, size, question?}
+  const [dailyQuestion, setDailyQuestion] = useState(null);
+  const [dailyActive, setDailyActive] = useState(false);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyError, setDailyError] = useState("");
+  const [dailyPoints, setDailyPoints] = useState(0);
+
+  // Günlük Puan Durumu (Leaderboard)
+  const [dailyLeaderboard, setDailyLeaderboard] = useState([]);
+
+  // === FEL0X: BOOKS STATE START ===
+const [books, setBooks] = useState(0);
+const [spending, setSpending] = useState(false);
+const [revealed, setRevealed] = useState({ qid: null, answer: "" }); // {qid, 'evet'|'hayır'|'bilmem'}
+
+const fetchBooks = async () => {
+  if (!user) return;
+  try {
+    const r = await fetch(`${apiUrl}/api/user/${user.id}/books`);
+    const d = await r.json();
+    if (d?.success) setBooks(d.books || 0);
+  } catch {}
+};
+
+// Aktif soru (solve/dailySolve)
+const getActiveQuestion = () => {
+  if (mode === "dailySolve" && dailyQuestion) return dailyQuestion;
+  if (mode === "solve" && questions.length > 0) return questions[currentIdx];
+  return null;
+};
+
+// “Kitap İpucu” (1 kitap harcar, doğru cevabı döner ve butonu parlatır)
+const spendBookAndReveal = async () => {
+  const q = getActiveQuestion();
+  if (!q || books <= 0 || spending) return;
+  setSpending(true);
+  try {
+    const r = await fetch(`${apiUrl}/api/books/spend`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: user.id, question_id: q.id }),
+    });
+    const d = await r.json();
+    if (d?.success) {
+      setBooks(typeof d.remaining === "number" ? d.remaining : Math.max(0, books - 1));
+      setRevealed({ qid: q.id, answer: d.correct_answer });
+    } else {
+      setInfo(d?.error || "Kitap kullanılamadı.");
+    }
+  } catch {
+    setInfo("Kitap kullanılamadı! (İletişim hatası)");
+  } finally {
+    setSpending(false);
+  }
+};
+
+// Cevap butonuna highlight ekle
+const highlightBtn = (ans, q) =>
+  revealed.qid === q?.id && revealed.answer === ans ? " ring-4 ring-yellow-400 animate-pulse " : "";
+
+// Kullanıcı yüklenince kitap sayısını çek
+useEffect(() => { if (user) fetchBooks(); }, [user]);
+
+// Soru/değişimlerde ipucunu sıfırla
+useEffect(() => { setRevealed({ qid: null, answer: "" }); }, [currentIdx, mode, dailyQuestion]);
+
+// Küçük kitap rozeti
+const BookCountPill = ({ count }) => (
+  <div className="flex items-center gap-1 px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-xl text-xs font-bold border border-yellow-300 shadow-sm">
+    <span role="img" aria-label="book">📚</span> {count}
+  </div>
+);
+// === FEL0X: BOOKS STATE END ===
+
+
   // Kademeli Yarış
   const [ladderActive, setLadderActive] = useState(false);
   const [ladderLevel, setLadderLevel] = useState(1); // 1..10
@@ -279,16 +355,7 @@ export default function UserPanel() {
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
 
-  // Günün Yarışması
-  const [dailyStatus, setDailyStatus] = useState(null); // {success, day_key, finished, index, size, question?}
-  const [dailyQuestion, setDailyQuestion] = useState(null);
-  const [dailyActive, setDailyActive] = useState(false);
-  const [dailyLoading, setDailyLoading] = useState(false);
-  const [dailyError, setDailyError] = useState("");
-  const [dailyPoints, setDailyPoints] = useState(0);
-
-  // Günlük Puan Durumu (Leaderboard)
-  const [dailyLeaderboard, setDailyLeaderboard] = useState([]);
+  
 
   // --- Kategoriler (yeni/geri geldi) ---
   const [surveys, setSurveys] = useState([]);
@@ -304,14 +371,25 @@ export default function UserPanel() {
   const [dailySurveyTitle, setDailySurveyTitle] = useState("");
 
   // Güvenli setState için
-  const feedbackTimeoutRef = useRef(null);
-  const isMountedRef = useRef(true);
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
-    };
-  }, []);
+ const feedbackTimeoutRef = useRef(null);
+const isMountedRef = useRef(false);
+useEffect(() => {
+  isMountedRef.current = true;          // mount
+  return () => {
+    isMountedRef.current = false;       // unmount
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+  };
+}, []);
+
+useEffect(() => {
+  if (!feedbackActive) return;
+  const safety = setTimeout(() => {
+    if (!isMountedRef.current) return;
+    setFeedbackActive(false);
+    setShowStars(false);
+  }, 5000); // 5 sn sonra her durumda kapat
+  return () => clearTimeout(safety);
+}, [feedbackActive]);
 
   /* -------------------- Yardımcılar -------------------- */
   const fetchRandomQuote = async () => {
@@ -769,6 +847,7 @@ export default function UserPanel() {
   }
 
   // NEW: Günlük sorunun başlığını çöz ve sakla
+   // === FEL0X: DAILY TITLE RESOLVER START ===
   useEffect(() => {
     (async () => {
       if (!dailyQuestion) {
@@ -786,127 +865,92 @@ export default function UserPanel() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dailyQuestion, surveyTitleById]);
+   // === FEL0X: DAILY TITLE RESOLVER END ===
 
   /* -------------------- Zamanlayıcı -------------------- */
-  useEffect(() => {
-    const hasQuestion =
-      (mode === "solve" && questions.length > 0) ||
-      (mode === "dailySolve" && dailyQuestion);
-    if (hasQuestion) {
-      setTimeLeft(24);
-      setTimerActive(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIdx, mode, questions, dailyQuestion]);
+// === FEL0X: TIMER BLOCK START ===
+useEffect(() => {
+  // Sadece ekranda gerçekten bir soru varsa süreyi başlat
+  const hasQuestion =
+    (mode === "solve" && questions.length > 0 && !!questions[currentIdx]) ||
+    (mode === "dailySolve" && !!dailyQuestion);
 
-  useEffect(() => {
-    if (timerActive && timeLeft > 0) {
-      const t = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
-      return () => clearTimeout(t);
-    }
-    if (timerActive && timeLeft === 0) {
-      setTimerActive(false);
-      handleAnswer("bilmem");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLeft, timerActive]);
+  if (hasQuestion) {
+    setTimeLeft(24);
+    setTimerActive(true);
+  } else {
+    setTimerActive(false);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [currentIdx, mode, questions, dailyQuestion]);
+
+useEffect(() => {
+  if (!timerActive) return;
+
+  if (timeLeft > 0) {
+    const t = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
+    return () => clearTimeout(t);
+  }
+
+  if (timeLeft === 0) {
+    setTimerActive(false);
+
+    // Zaman dolduğunda gerçekten bir soru varsa “bilmem” gönder
+    const hasQ =
+      (mode === "dailySolve" && !!dailyQuestion) ||
+      (mode === "solve" && !!questions[currentIdx]);
+
+    if (hasQ) handleAnswer("bilmem");
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [timeLeft, timerActive]);
+// === FEL0X: TIMER BLOCK END ===
+
 
   /* -------------------- Cevap işle -------------------- */
-  const getSuccessMsg = (puan) => {
-    if (puan <= 3) return "TEBRİKLER";
-    if (puan <= 6) return "HARİKASIN";
-    if (puan <= 9) return "SÜPERSİN";
-    return "MUHTEŞEMSİN";
-  };
+   // === FEL0X: ANSWER HANDLERS START ===
+const getSuccessMsg = (puan) => {
+  if (puan <= 3) return "TEBRİKLER";
+  if (puan <= 6) return "HARİKASIN";
+  if (puan <= 9) return "SÜPERSİN";
+  return "MUHTEŞEMSİN";
+};
 
-  const refreshUserStats = async () => {
+const refreshUserStats = async () => {
+  if (!user) return;
+  try {
     const r = await fetch(`${apiUrl}/api/user/${user.id}/total-points`);
     const data = await r.json();
     if (data.success) {
       setTotalPoints(data.totalPoints);
       setAnsweredCount(data.answeredCount);
     }
-    try {
-      const d = await fetch(`${apiUrl}/api/user/${user.id}/rank?period=today`).then((x) =>
-        x.json()
-      );
-      setTodayRank(d?.success ? d.rank : null);
-    } catch {}
-  };
+  } catch {}
+  try {
+    const d = await fetch(`${apiUrl}/api/user/${user.id}/rank?period=today`).then((x) => x.json());
+    setTodayRank(d?.success ? d.rank : null);
+  } catch {}
+};
 
-  const handleDailyAnswer = (cevap, opts = { exitAfter: false }) => () => {
-    handleAnswer(cevap, opts);
-  };
+const handleDailyAnswer = (cevap, opts = { exitAfter: false }) => () => {
+  handleAnswer(cevap, opts);
+};
 
-  const handleAnswer = (cevap, opts = { exitAfter: false }) => {
-    setTimerActive(false);
-    setInfo("");
+const handleAnswer = (cevap, opts = { exitAfter: false }) => {
+  if (!user) return;
 
-    // GÜNLÜK YARIŞMASI
-    if (mode === "dailySolve" && dailyActive && dailyQuestion) {
-      const q = dailyQuestion;
-      fetch(`${apiUrl}/api/daily/answer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.id,
-          question_id: q.id,
-          answer: cevap,
-          time_left_seconds: timeLeft,
-          max_time_seconds: 24,
-        }),
-      })
-        .then((res) => res.json())
-        .then(async (d) => {
-          let msg = "";
-          let stars = false;
-          let starCount = 1;
-          if (cevap === "bilmem") msg = "ÖĞREN DE GEL";
-          else if (d.is_correct === 1) {
-            msg = getSuccessMsg(q.point);
-            stars = true;
-            starCount = Math.max(1, Math.min(q.point || 1, 10));
-          } else msg = "BİLEMEDİN";
+  setTimerActive(false);
+  setInfo("");
 
-          setFeedback(msg);
-          setStarsCount(starCount);
-          setShowStars(stars && d.is_correct === 1);
-          setFeedbackActive(true);
+  const isDaily = mode === "dailySolve" && dailyActive;
+  const q = isDaily ? dailyQuestion : questions[currentIdx];
 
-          await refreshUserStats();
-          await fetchDailyStatus();
+  // Kritik koruma: soru yoksa (race/yenileme vb.) hiçbir şey yapma
+  if (!q || q.id == null) return;
 
-          if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
-          feedbackTimeoutRef.current = setTimeout(async () => {
-            if (!isMountedRef.current) return;
-            setFeedbackActive(false);
-            setShowStars(false);
-
-            const r2 = await fetch(`${apiUrl}/api/daily/status?user_id=${user.id}`);
-            const nx = await r2.json();
-
-            if (!isMountedRef.current) return;
-
-            if (nx?.success && !nx.finished && nx.question) {
-              setDailyQuestion(nx.question);
-              if (opts.exitAfter) {
-                setDailyActive(false);
-                setMode("today");
-              }
-            } else {
-              await fetchDailyStatus();
-              setDailyActive(false);
-              setMode("today");
-            }
-          }, 3200);
-        })
-        .catch(() => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
-      return;
-    }
-
-    // NORMAL / KADEMELİ
-    const q = questions[currentIdx];
-    fetch(`${apiUrl}/api/answers`, {
+  // --------- GÜNLÜK YARIŞMA ---------
+  if (isDaily) {
+    fetch(`${apiUrl}/api/daily/answer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -918,76 +962,137 @@ export default function UserPanel() {
       }),
     })
       .then((res) => res.json())
-      .then((d) => {
-        if (d.success) {
-          let msg = "";
-          let stars = false;
-          let starCount = 1;
-          if (cevap === "bilmem") msg = "ÖĞREN DE GEL";
-          else if (d.is_correct === 1) {
-            msg = getSuccessMsg(q.point);
-            stars = true;
-            starCount = Math.max(1, Math.min(q.point || 1, 10));
-          } else msg = "BİLEMEDİN";
+      .then(async (d) => {
+        let msg = "";
+        let stars = false;
+        let starCount = 1;
 
-          setFeedback(msg);
-          setStarsCount(stars ? Math.max(1, Math.min(q.point || 1, 10)) : 1);
-          setShowStars(stars && d.is_correct === 1);
-          setFeedbackActive(true);
+        if (cevap === "bilmem") msg = "ÖĞREN DE GEL";
+        else if (d.is_correct === 1) {
+          msg = getSuccessMsg(q.point);
+          stars = true;
+          starCount = Math.max(1, Math.min(q.point || 1, 10));
+        } else msg = "BİLEMEDİN";
 
-          if (ladderActive && cevap !== "bilmem") {
-            setLadderAttempts((prev) => prev + 1);
-            if (d.is_correct === 1) setLadderCorrect((prev) => prev + 1);
+        setFeedback(msg);
+        setStarsCount(starCount);
+        setShowStars(stars && d.is_correct === 1);
+        setFeedbackActive(true);
+
+        await refreshUserStats();
+        await fetchDailyStatus();
+
+        if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+        feedbackTimeoutRef.current = setTimeout(async () => {
+          if (!isMountedRef.current) return;
+          setFeedbackActive(false);
+          setShowStars(false);
+
+          const r2 = await fetch(`${apiUrl}/api/daily/status?user_id=${user.id}`);
+          const nx = await r2.json();
+
+          if (!isMountedRef.current) return;
+
+          if (nx?.success && !nx.finished && nx.question) {
+            setDailyQuestion(nx.question);
+            if (opts.exitAfter) {
+              setDailyActive(false);
+              setMode("today");
+            }
+          } else {
+            await fetchDailyStatus();
+            setDailyActive(false);
+            setMode("today");
           }
-
-          if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
-          feedbackTimeoutRef.current = setTimeout(async () => {
-            if (!isMountedRef.current) return;
-            setFeedbackActive(false);
-            setShowStars(false);
-
-            if (d.is_correct === 1) {
-              setCorrectAnswered((prev) => [...prev, q.id]);
-            }
-
-            refreshUserStats();
-
-            if (currentIdx < questions.length - 1) {
-              setCurrentIdx((prev) => prev + 1);
-            } else {
-              if (ladderActive) {
-                await checkLadderProgress();
-              } else {
-                setMode("thankyou");
-              }
-            }
-          }, 3200);
-        } else {
-          setInfo(d.error || "Cevap kaydedilemedi!");
-        }
+        }, 3200);
       })
       .catch(() => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
-  };
+    return;
+  }
 
-  /* --- Günlük: Şimdilik bu kadar (skip endpoint) --- */
-  const handleDailySkip = async () => {
-    try {
-      if (!dailyQuestion) return;
-      await fetch(`${apiUrl}/api/daily/skip`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.id,
-          question_id: dailyQuestion.id,
-          time_left_seconds: timeLeft,
-          max_time_seconds: 24,
-        }),
-      });
-    } catch {}
-    await fetchDailyStatus();
-    setDailyActive(false);
-    setMode("today");
-  };
+  // --------- NORMAL / KADEMELİ ---------
+  fetch(`${apiUrl}/api/answers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      user_id: user.id,
+      question_id: q.id,
+      answer: cevap,
+      time_left_seconds: timeLeft,
+      max_time_seconds: 24,
+    }),
+  })
+    .then((res) => res.json())
+    .then((d) => {
+      if (d.success) {
+        let msg = "";
+        let stars = false;
+
+        if (cevap === "bilmem") msg = "ÖĞREN DE GEL";
+        else if (d.is_correct === 1) {
+          msg = getSuccessMsg(q.point);
+          stars = true;
+        } else msg = "BİLEMEDİN";
+
+        setFeedback(msg);
+        setStarsCount(stars ? Math.max(1, Math.min(q.point || 1, 10)) : 1);
+        setShowStars(stars && d.is_correct === 1);
+        setFeedbackActive(true);
+
+        if (ladderActive && cevap !== "bilmem") {
+          setLadderAttempts((prev) => prev + 1);
+          if (d.is_correct === 1) setLadderCorrect((prev) => prev + 1);
+        }
+
+        if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+        feedbackTimeoutRef.current = setTimeout(async () => {
+          if (!isMountedRef.current) return;
+          setFeedbackActive(false);
+          setShowStars(false);
+
+          if (d.is_correct === 1) {
+            setCorrectAnswered((prev) => [...prev, q.id]);
+          }
+
+          refreshUserStats();
+
+          if (currentIdx < questions.length - 1) {
+            setCurrentIdx((prev) => prev + 1);
+          } else {
+            if (ladderActive) {
+              await checkLadderProgress();
+            } else {
+              setMode("thankyou");
+            }
+          }
+        }, 3200);
+      } else {
+        setInfo(d.error || "Cevap kaydedilemedi!");
+      }
+    })
+    .catch(() => setInfo("Cevap kaydedilemedi! (İletişim hatası)"));
+};
+
+/* --- Günlük: Şimdilik bu kadar (skip endpoint) --- */
+const handleDailySkip = async () => {
+  if (!user || !dailyQuestion) return;
+  try {
+    await fetch(`${apiUrl}/api/daily/skip`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: user.id,
+        question_id: dailyQuestion.id,
+        time_left_seconds: timeLeft,
+        max_time_seconds: 24,
+      }),
+    });
+  } catch {}
+  await fetchDailyStatus();
+  setDailyActive(false);
+  setMode("today");
+};
+// === FEL0X: ANSWER HANDLERS END ===
 
   /* -------------------- Çıkış -------------------- */
   const handleLogout = async () => {
@@ -1124,7 +1229,9 @@ export default function UserPanel() {
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
           <div className="flex flex-col items-center gap-2">
             {/* Avatar */}
-            <div className="rounded-full bg-gray-100 p-1 shadow-md mb-2">
+           {/* === FEL0X: TODAY AVATAR BLOCK START === */}
+          <div className="flex items-center gap-2 mb-2">
+            <div className="rounded-full bg-gray-100 p-1 shadow-md">
               <img
                 src={getAvatarUrl()}
                 alt="avatar"
@@ -1133,6 +1240,11 @@ export default function UserPanel() {
                 className="w-[140px] h-[140px] rounded-full object-contain"
               />
             </div>
+            <BookCountPill count={books} />
+          </div>
+{/* === FEL0X: TODAY AVATAR BLOCK END === */}
+
+
             <h1 className="text-2xl font-extrabold text-cyan-700 text-center">
               {user.ad} {user.soyad}
             </h1>
@@ -1616,29 +1728,43 @@ export default function UserPanel() {
           <div className="text-2xl font-bold text-cyan-600 mb-3">
             Puan: {q.point}
           </div>
-          <div className="flex flex-col gap-3 mb-4">
-            <button
-              className="py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95"
-              onClick={() => handleAnswer("evet")}
-              disabled={timeLeft === 0 || feedbackActive}
-            >
-              Evet
-            </button>
-            <button
-              className="py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95"
-              onClick={() => handleAnswer("hayır")}
-              disabled={timeLeft === 0 || feedbackActive}
-            >
-              Hayır
-            </button>
-            <button
-              className="py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95"
-              onClick={() => handleAnswer("bilmem")}
-              disabled={timeLeft === 0 || feedbackActive}
-            >
-              Bilmem
-            </button>
-          </div>
+         {/* === FEL0X: SOLVE ANSWER BUTTONS START === */}
+<div className="flex flex-col gap-3 mb-4">
+  <button
+    className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("evet", q)}`}
+    onClick={() => handleAnswer("evet")}
+    disabled={timeLeft === 0 || feedbackActive}
+  >
+    Evet
+  </button>
+  <button
+    className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("hayır", q)}`}
+    onClick={() => handleAnswer("hayır")}
+    disabled={timeLeft === 0 || feedbackActive}
+  >
+    Hayır
+  </button>
+  <button
+    className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("bilmem", q)}`}
+    onClick={() => handleAnswer("bilmem")}
+    disabled={timeLeft === 0 || feedbackActive}
+  >
+    Bilmem
+  </button>
+
+  {/* Kitap İpucu */}
+  <button
+    className="py-2 rounded-2xl font-bold bg-yellow-100 text-yellow-800 hover:bg-yellow-200 active:scale-95 disabled:opacity-50"
+    onClick={spendBookAndReveal}
+    disabled={timeLeft === 0 || feedbackActive || books <= 0 || spending || (revealed.qid === q.id)}
+    title={books > 0 ? "1 kitap harcar, doğru cevabı gösterir" : "Kitabın yok"}
+  >
+    <span className="mr-1">📚</span> Kitap İpucu {`(${books})`}
+  </button>
+</div>
+{/* === FEL0X: SOLVE ANSWER BUTTONS END === */}
+
+
           <button
             className="mt-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-2xl hover:bg-gray-400"
             onClick={() => setMode("thankyou")}
@@ -1685,29 +1811,43 @@ export default function UserPanel() {
           <div className="text-2xl font-bold text-cyan-600 mb-3">
             Puan: {q.point}
           </div>
-          <div className="flex flex-col gap-3 mb-4">
-            <button
-              className="py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95"
-              onClick={handleDailyAnswer("evet")}
-              disabled={timeLeft === 0 || feedbackActive}
-            >
-              Evet
-            </button>
-            <button
-              className="py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95"
-              onClick={handleDailyAnswer("hayır")}
-              disabled={timeLeft === 0 || feedbackActive}
-            >
-              Hayır
-            </button>
-            <button
-              className="py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95"
-              onClick={handleDailyAnswer("bilmem")}
-              disabled={timeLeft === 0 || feedbackActive}
-            >
-              Bilmem
-            </button>
-          </div>
+          {/* === FEL0X: DAILYSOLVE ANSWER BUTTONS START === */}
+<div className="flex flex-col gap-3 mb-4">
+  <button
+    className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("evet", q)}`}
+    onClick={handleDailyAnswer("evet")}
+    disabled={timeLeft === 0 || feedbackActive}
+  >
+    Evet
+  </button>
+  <button
+    className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("hayır", q)}`}
+    onClick={handleDailyAnswer("hayır")}
+    disabled={timeLeft === 0 || feedbackActive}
+  >
+    Hayır
+  </button>
+  <button
+    className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("bilmem", q)}`}
+    onClick={handleDailyAnswer("bilmem")}
+    disabled={timeLeft === 0 || feedbackActive}
+  >
+    Bilmem
+  </button>
+
+  {/* Kitap İpucu */}
+  <button
+    className="py-2 rounded-2xl font-bold bg-yellow-100 text-yellow-800 hover:bg-yellow-200 active:scale-95 disabled:opacity-50"
+    onClick={spendBookAndReveal}
+    disabled={timeLeft === 0 || feedbackActive || books <= 0 || spending || (revealed.qid === q.id)}
+    title={books > 0 ? "1 kitap harcar, doğru cevabı gösterir" : "Kitabın yok"}
+  >
+    <span className="mr-1">📚</span> Kitap İpucu {`(${books})`}
+  </button>
+</div>
+{/* === FEL0X: DAILYSOLVE ANSWER BUTTONS END === */}
+
+
           <button
             className="mt-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-2xl hover:bg-gray-400"
             onClick={handleDailySkip}
