@@ -296,6 +296,13 @@ export default function UserPanel() {
   const [surveyLeaderboard, setSurveyLeaderboard] = useState([]);
   const [selectedSurvey, setSelectedSurvey] = useState(null);
 
+  // ---- NEW: Survey başlığı göstermek için meta & önbellekler ----
+  const surveysCacheRef = useRef([]);                     // [{id,title,...}]
+  const [surveyTitleById, setSurveyTitleById] = useState({}); // {survey_id: title}
+  const questionSurveyMapRef = useRef({});                // {question_id: survey_id}
+  const surveyQuestionsCacheRef = useRef({});             // {survey_id: Set(question_ids)}
+  const [dailySurveyTitle, setDailySurveyTitle] = useState("");
+
   // Güvenli setState için
   const feedbackTimeoutRef = useRef(null);
   const isMountedRef = useRef(true);
@@ -360,6 +367,80 @@ export default function UserPanel() {
       .then((d) => d && setAvatarManifest(d))
       .catch(() => {});
   }, []);
+
+  /* -------- NEW: Onaylı kategorileri ve başlık haritasını önden al -------- */
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const r = await fetch(`${apiUrl}/api/user/approved-surveys`);
+        const d = await r.json();
+        if (!isMountedRef.current) return;
+        if (d?.success && Array.isArray(d.surveys)) {
+          surveysCacheRef.current = d.surveys;
+          // { id: title } haritası
+          const map = {};
+          d.surveys.forEach((s) => (map[s.id] = s.title));
+          setSurveyTitleById(map);
+        } else {
+          surveysCacheRef.current = [];
+          setSurveyTitleById({});
+        }
+      } catch {
+        if (!isMountedRef.current) return;
+        surveysCacheRef.current = [];
+        setSurveyTitleById({});
+      }
+    })();
+  }, [user]);
+
+  // ---- NEW: Soru->Anket önbelleği kurucu ----
+  const indexQuestionsIntoCaches = (qs = []) => {
+    const q2s = questionSurveyMapRef.current;
+    const sCache = surveyQuestionsCacheRef.current;
+    qs.forEach((q) => {
+      if (!q || q.id == null) return;
+      if (q.survey_id != null) {
+        q2s[q.id] = q.survey_id;
+        if (!sCache[q.survey_id]) sCache[q.survey_id] = new Set();
+        sCache[q.survey_id].add(q.id);
+      }
+    });
+  };
+
+  const ensureSurveyLoadedFor = async (surveyId) => {
+    if (!surveyId) return;
+    if (!surveyQuestionsCacheRef.current[surveyId]) {
+      const r = await fetch(`${apiUrl}/api/surveys/${surveyId}/questions`);
+      const d = await r.json();
+      if (!isMountedRef.current) return;
+      if (d?.success && Array.isArray(d.questions)) {
+        indexQuestionsIntoCaches(d.questions);
+      }
+    }
+  };
+
+  // Gerekirse sorunun anketini bul (günlük yarışma için özellikle)
+  const resolveSurveyIdForQuestion = async (questionId) => {
+    if (!questionId) return null;
+    if (questionSurveyMapRef.current[questionId])
+      return questionSurveyMapRef.current[questionId];
+
+    // onaylı kategoriler arasında tara, gerekirse soruları indir
+    for (const s of surveysCacheRef.current) {
+      await ensureSurveyLoadedFor(s.id);
+      if (surveyQuestionsCacheRef.current[s.id]?.has(questionId)) {
+        return questionSurveyMapRef.current[questionId] || s.id;
+      }
+    }
+    return null;
+  };
+
+  const getSurveyTitleForQuestionSync = (q) => {
+    if (!q) return "";
+    const sid = q.survey_id || questionSurveyMapRef.current[q.id];
+    return sid ? (surveyTitleById[sid] || "") : "";
+  };
 
   /* -------------------- Kullanıcıya ait verileri çek -------------------- */
   useEffect(() => {
@@ -481,8 +562,14 @@ export default function UserPanel() {
       .then((res) => res.json())
       .then((d) => {
         if (!isMountedRef.current) return;
-        if (d.success) setSurveys(Array.isArray(d.surveys) ? d.surveys : []);
-        else setSurveys([]);
+        if (d.success) {
+          setSurveys(Array.isArray(d.surveys) ? d.surveys : []);
+          // başlık haritasını güncelle
+          const map = {};
+          (d.surveys || []).forEach((s) => (map[s.id] = s.title));
+          setSurveyTitleById((prev) => ({ ...prev, ...map }));
+          surveysCacheRef.current = d.surveys || [];
+        } else setSurveys([]);
       })
       .catch(() => setSurveys([]));
   };
@@ -496,6 +583,8 @@ export default function UserPanel() {
           const filtered = (d.questions || []).filter(
             (q) => !correctAnswered.includes(q.id)
           );
+          // önbelleklere işle
+          indexQuestionsIntoCaches(d.questions || []);
           shuffleInPlace(filtered);
           setQuestions(filtered);
           setCurrentIdx(0);
@@ -531,6 +620,15 @@ export default function UserPanel() {
   const startRandom = async () => {
     const res = await fetch(`${apiUrl}/api/user/approved-surveys`);
     const data = await res.json();
+
+    // başlık haritasını güncelle
+    if (data?.surveys) {
+      const map = {};
+      data.surveys.forEach((s) => (map[s.id] = s.title));
+      setSurveyTitleById((prev) => ({ ...prev, ...map }));
+      surveysCacheRef.current = data.surveys || [];
+    }
+
     let allQuestions = [];
     for (const survey of data.surveys || []) {
       const qRes = await fetch(`${apiUrl}/api/surveys/${survey.id}/questions`);
@@ -539,6 +637,9 @@ export default function UserPanel() {
         allQuestions = allQuestions.concat(qData.questions);
       }
     }
+    // önbellekleri doldur
+    indexQuestionsIntoCaches(allQuestions);
+
     const filtered = allQuestions.filter(
       (q) => !correctAnswered.includes(q.id)
     );
@@ -561,6 +662,9 @@ export default function UserPanel() {
       );
       const d = await r.json();
       const all = Array.isArray(d?.questions) ? d.questions : [];
+
+      // önbelleğe işle
+      indexQuestionsIntoCaches(all);
 
       setQuestions(all);
       setCurrentIdx(0);
@@ -663,6 +767,25 @@ export default function UserPanel() {
       setDailyLoading(false);
     }
   }
+
+  // NEW: Günlük sorunun başlığını çöz ve sakla
+  useEffect(() => {
+    (async () => {
+      if (!dailyQuestion) {
+        setDailySurveyTitle("");
+        return;
+      }
+      const t0 = getSurveyTitleForQuestionSync(dailyQuestion);
+      if (t0) {
+        setDailySurveyTitle(t0);
+        return;
+      }
+      const sid = await resolveSurveyIdForQuestion(dailyQuestion.id);
+      if (!isMountedRef.current) return;
+      if (sid) setDailySurveyTitle(surveyTitleById[sid] || "");
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dailyQuestion, surveyTitleById]);
 
   /* -------------------- Zamanlayıcı -------------------- */
   useEffect(() => {
@@ -1466,6 +1589,7 @@ export default function UserPanel() {
   /* -------------------- SORU ÇÖZ (NORMAL/KADEMELİ) -------------------- */
   if (mode === "solve" && questions.length > 0) {
     const q = questions[currentIdx];
+    const surveyTitleHere = getSurveyTitleForQuestionSync(q);
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600 px-3">
         <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
@@ -1480,6 +1604,14 @@ export default function UserPanel() {
           <div className="text-4xl font-mono text-emerald-700 mb-2 select-none">
             {timeLeft}
           </div>
+
+          {/* NEW: Survey başlığı (saniyenin hemen altında, sorunun üstünde) */}
+          {surveyTitleHere ? (
+            <div className="mb-2">
+              <StatusBadge text={surveyTitleHere} color="blue" />
+            </div>
+          ) : null}
+
           <div className="text-lg font-semibold mb-4">{q.question}</div>
           <div className="text-2xl font-bold text-cyan-600 mb-3">
             Puan: {q.point}
@@ -1541,6 +1673,14 @@ export default function UserPanel() {
           <div className="text-4xl font-mono text-emerald-700 mb-2 select-none">
             {timeLeft}
           </div>
+
+          {/* NEW: Survey başlığı (saniyenin hemen altında, sorunun üstünde) */}
+          {dailySurveyTitle ? (
+            <div className="mb-2">
+              <StatusBadge text={dailySurveyTitle} color="blue" />
+            </div>
+          ) : null}
+
           <div className="text-lg font-semibold mb-4">{q.question}</div>
           <div className="text-2xl font-bold text-cyan-600 mb-3">
             Puan: {q.point}
