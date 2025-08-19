@@ -1056,16 +1056,7 @@ export default function UserPanel() {
               <span className="mr-2">🏆</span> Genel Puan Tablosu
             </button>
 
-            {/* Puanlarım */}
-            <button
-              className="w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-purple-600 to-fuchsia-500 hover:to-purple-800 text-white shadow-lg active:scale-95 transition"
-              onClick={() => {
-                setShowMyPerf(true);
-                loadMyPerformance();
-              }}
-            >
-              <span className="mr-2">📈</span> Puanlarım
-            </button>
+            {/* Puanlarım butonu panelden kaldırıldı → List ekranının en üstüne taşındı */}
           </div>
 
           <button
@@ -1200,46 +1191,58 @@ export default function UserPanel() {
     );
   }
 
-  /* -------------------- KATEGORİ LİSTESİ (modern mobil kartlar) -------------------- */
+  /* -------------------- KATEGORİ LİSTESİ (kompakt & mobil) -------------------- */
   if (mode === "list") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
-          <h2 className="text-xl font-extrabold text-cyan-700 text-center mb-4">
-            Onaylı Kategoriler
-          </h2>
+          {/* Üst bar: başlık + PUANLARIM */}
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xl font-extrabold text-cyan-700">Onaylı Kategoriler</h2>
+          </div>
+
+          {/* Puanlarım: en üstte, tek tuş */}
+          <button
+            className="w-full mb-3 py-2 rounded-2xl font-bold bg-gradient-to-r from-purple-600 to-fuchsia-500 hover:to-purple-800 text-white shadow active:scale-95 transition"
+            onClick={() => { setShowMyPerf(true); loadMyPerformance(); }}
+            title="Kategori bazında kendi performansını gör"
+          >
+            <span className="mr-2">📈</span> Puanlarım
+          </button>
 
           {surveys.length === 0 ? (
             <div className="text-center text-gray-600">Hiç onaylanmış kategori yok.</div>
           ) : (
-            <div className="grid grid-cols-1 gap-3">
+            <div className="grid grid-cols-1 gap-2">
               {surveys.map((s) => (
                 <div
                   key={s.id}
-                  className="rounded-2xl border bg-white shadow-sm p-4 flex items-start gap-3"
+                  className="rounded-xl border bg-white shadow-sm p-3 flex items-center justify-between"
                 >
-                  <div className="shrink-0 rounded-xl bg-cyan-50 w-12 h-12 flex items-center justify-center text-cyan-600 font-extrabold">
-                    {String(s.title || "?").slice(0, 1).toUpperCase()}
+                  {/* solda başlık & info - ikon kaldırıldı */}
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-gray-800 truncate">{s.title}</div>
+                    <div className="text-xs text-gray-600 mt-0.5">
+                      Soru: <b>{s.question_count ?? "?"}</b>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <div className="text-base font-bold text-gray-800">{s.title}</div>
-                    <div className="text-sm text-gray-600 mt-0.5">
-                      Soru Sayısı: <b>{s.question_count ?? "?"}</b>
-                    </div>
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        className="px-3 py-1.5 rounded-xl bg-cyan-600 text-white text-sm font-bold hover:bg-cyan-800 active:scale-95"
-                        onClick={() => fetchQuestions(s.id)}
-                      >
-                        Soruları Çöz
-                      </button>
-                      <button
-                        className="px-3 py-1.5 rounded-xl bg-orange-500 text-white text-sm font-bold hover:bg-orange-700 active:scale-95"
-                        onClick={() => fetchSurveyLeaderboard(s.id)}
-                      >
-                        Puan Tablosu
-                      </button>
-                    </div>
+
+                  {/* sağda aksiyonlar (kompakt pill butonlar) */}
+                  <div className="flex items-center gap-2 pl-3 shrink-0">
+                    <button
+                      className="px-3 py-1.5 rounded-full bg-cyan-600 text-white text-xs font-bold hover:bg-cyan-800 active:scale-95"
+                      onClick={() => fetchQuestions(s.id)}
+                      title="Soruları çöz"
+                    >
+                      Soruları Çöz
+                    </button>
+                    <button
+                      className="px-3 py-1.5 rounded-full bg-orange-500 text-white text-xs font-bold hover:bg-orange-700 active:scale-95"
+                      onClick={() => fetchSurveyLeaderboard(s.id)}
+                      title="Bu kategori puan tablosu"
+                    >
+                      Puan Tablosu
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1301,6 +1304,15 @@ export default function UserPanel() {
               </div>
             </div>
           )}
+
+          {/* Puanlarım modalı (buradan da açılıyor) */}
+          <PointsTable
+            show={showMyPerf}
+            onClose={() => setShowMyPerf(false)}
+            loading={myPerfLoading}
+            error={myPerfError}
+            data={myPerf}
+          />
         </div>
       </div>
     );
