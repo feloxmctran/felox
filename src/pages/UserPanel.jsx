@@ -1256,7 +1256,7 @@ const handleDailySkip = async () => {
               <Box title="Puanın" value={totalPoints} />
               <Box title="Cevapladığın" value={answeredCount} />
               <Box
-                title="Bugün"
+                title="Bugün yarışlarda"
                 value={
                   todayRankLoading
                     ? "—"
@@ -1642,13 +1642,14 @@ const handleDailySkip = async () => {
 
             {/* Bugünün Puan Durumu */}
             <div className="mt-4">
-              <div className="text-sm font-bold text-gray-700 mb-2">Bugünün Puan Durumu</div>
+              <div className="text-sm font-bold text-gray-700 mb-2">Günün Yarışması Puan Durumu</div>
               <div className="overflow-auto rounded-xl border">
                 <table className="min-w-full text-xs">
                   <thead className="bg-blue-50">
                     <tr>
                       <th className="p-2 border">#</th>
                       <th className="p-2 border text-left">Ad</th>
+                      <th className="p-2 border text-left">Soyad</th> {/* eklendi */}
                       <th className="p-2 border">Soru</th>
                       <th className="p-2 border">Puan</th>
                       <th className="p-2 border">Saniye</th>
@@ -1662,6 +1663,7 @@ const handleDailySkip = async () => {
                       >
                         <td className="p-2 border text-center">{i + 1}</td>
                         <td className="p-2 border">{u?.ad ?? "-"}</td>
+                        <td className="p-2 border">{u?.soyad ?? "-"}</td> {/* eklendi */}
                         <td className="p-2 border text-center">{u?.answered_count ?? 0}</td>
                         <td className="p-2 border text-center">{u?.total_points ?? 0}</td>
                         <td className="p-2 border text-center">{u?.time_spent ?? 0}</td>
