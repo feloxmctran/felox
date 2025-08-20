@@ -1344,7 +1344,7 @@ const handleDailySkip = async () => {
               <Box title="Puanın" value={totalPoints} />
               <Box title="Cevapladığın" value={answeredCount} />
               <Box
-                title="Bugün yarışlarda"
+                title="Bugün"
                 value={
                   todayRankLoading
                     ? "—"
