@@ -623,12 +623,13 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  // === IMPDAY: auto fetch on today mode START ===
+// === IMPDAY: auto fetch by day_key START ===
 useEffect(() => {
-  if (mode === "today") fetchImportantDay();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [mode]);
-// === IMPDAY: auto fetch on today mode END ===
+  const dk = dailyStatus?.day_key;
+  if (dk) fetchImpDay(dk);
+}, [dailyStatus?.day_key]);
+// === IMPDAY: auto fetch by day_key END ===
+
 
 
   /* -------------------- Günlük Puan Durumu -------------------- */
@@ -648,33 +649,18 @@ useEffect(() => {
     }
   };
 // === IMPDAY: fetch START ===
-const fetchImportantDay = async () => {
+const fetchImpDay = async (dayKey) => {
+  if (!dayKey) return;
   setImpDayLoading(true);
   try {
-    const r = await fetch(`${apiUrl}/api/important-day`);
+    const r = await fetch(`${apiUrl}/api/daily/impday?day=${encodeURIComponent(dayKey)}`);
     const d = await r.json();
     if (!isMountedRef.current) return;
 
-    // "20 Eylül" gibi (yıl yok)
-    const pretty =
-      d?.pretty_date ||
-      (() => {
-        const tz = "Europe/Istanbul";
-        const key = d?.day_key || new Date().toISOString().slice(0, 10);
-        try {
-          return new Intl.DateTimeFormat("tr-TR", {
-            timeZone: tz,
-            day: "2-digit",
-            month: "long",
-          }).format(new Date(key));
-        } catch {
-          return new Intl.DateTimeFormat("tr-TR", {
-            timeZone: tz,
-            day: "2-digit",
-            month: "long",
-          }).format(new Date());
-        }
-      })();
+    const pretty = new Date(dayKey).toLocaleDateString("tr-TR", {
+      day: "2-digit",
+      month: "long",
+    });
 
     if (d?.success && d?.record) {
       setImpDay({
@@ -695,6 +681,7 @@ const fetchImportantDay = async () => {
   }
 };
 // === IMPDAY: fetch END ===
+
 
 
 
@@ -873,6 +860,7 @@ const fetchImportantDay = async () => {
         if (d.day_key) {
           fetchMyDailyPoints(d.day_key);
           fetchDailyLeaderboard(d.day_key); // tabloyu getir
+            fetchImpDay(d.day_key); // important day'i getir
         }
       } else {
         setDailyStatus(null);
@@ -1700,9 +1688,7 @@ const handleDailySkip = async () => {
 
 <div className="text-sm text-gray-600 mt-2">Günün Yarışmasında başarılar</div>
 
-            <div className="text-sm text-gray-600">Günün Yarışmasında başarılar dileriz</div>
-
-            {/* Üst kutular */}
+                       {/* Üst kutular */}
             <div className="w-full flex gap-3 mt-3 flex-wrap">
               {/* CEVAPLANAN */}
               <StatCard label="Cevapladığın">{idx}</StatCard>
