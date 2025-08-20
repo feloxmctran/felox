@@ -649,7 +649,7 @@ useEffect(() => {
     }
   };
 // === IMPDAY: fetch START ===
-const fetchImpDay = async (dayKey) => {
+async function fetchImpDay(dayKey) {
   if (!dayKey) return;
   setImpDayLoading(true);
   try {
@@ -669,7 +669,6 @@ const fetchImpDay = async (dayKey) => {
         description: d.record.description || d.record.desc || "",
       });
     } else {
-      // Kayıt yoksa sadece tarihi göster
       setImpDay({ prettyDate: pretty, daytitle: "", description: "" });
     }
   } catch {
@@ -679,8 +678,9 @@ const fetchImpDay = async (dayKey) => {
     if (!isMountedRef.current) return;
     setImpDayLoading(false);
   }
-};
+}
 // === IMPDAY: fetch END ===
+
 
 
 
