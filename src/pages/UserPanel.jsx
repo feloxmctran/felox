@@ -278,6 +278,12 @@ export default function UserPanel() {
   // Günlük Puan Durumu (Leaderboard)
   const [dailyLeaderboard, setDailyLeaderboard] = useState([]);
 
+// === IMPDAY: state START ===
+const [impDay, setImpDay] = useState(null);          // {prettyDate, daytitle, description}
+const [impDayLoading, setImpDayLoading] = useState(false);
+// === IMPDAY: state END ===
+
+
   // === FEL0X: BOOKS STATE START ===
 const [books, setBooks] = useState(0);
 const [spending, setSpending] = useState(false);
@@ -617,6 +623,14 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
+  // === IMPDAY: auto fetch on today mode START ===
+useEffect(() => {
+  if (mode === "today") fetchImportantDay();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [mode]);
+// === IMPDAY: auto fetch on today mode END ===
+
+
   /* -------------------- Günlük Puan Durumu -------------------- */
   const fetchDailyLeaderboard = async (dayKey) => {
     try {
@@ -633,6 +647,56 @@ useEffect(() => {
       setDailyLeaderboard([]);
     }
   };
+// === IMPDAY: fetch START ===
+const fetchImportantDay = async () => {
+  setImpDayLoading(true);
+  try {
+    const r = await fetch(`${apiUrl}/api/important-day`);
+    const d = await r.json();
+    if (!isMountedRef.current) return;
+
+    // "20 Eylül" gibi (yıl yok)
+    const pretty =
+      d?.pretty_date ||
+      (() => {
+        const tz = "Europe/Istanbul";
+        const key = d?.day_key || new Date().toISOString().slice(0, 10);
+        try {
+          return new Intl.DateTimeFormat("tr-TR", {
+            timeZone: tz,
+            day: "2-digit",
+            month: "long",
+          }).format(new Date(key));
+        } catch {
+          return new Intl.DateTimeFormat("tr-TR", {
+            timeZone: tz,
+            day: "2-digit",
+            month: "long",
+          }).format(new Date());
+        }
+      })();
+
+    if (d?.success && d?.record) {
+      setImpDay({
+        prettyDate: pretty,
+        daytitle: d.record.daytitle || "",
+        description: d.record.description || d.record.desc || "",
+      });
+    } else {
+      // Kayıt yoksa sadece tarihi göster
+      setImpDay({ prettyDate: pretty, daytitle: "", description: "" });
+    }
+  } catch {
+    if (!isMountedRef.current) return;
+    setImpDay(null);
+  } finally {
+    if (!isMountedRef.current) return;
+    setImpDayLoading(false);
+  }
+};
+// === IMPDAY: fetch END ===
+
+
 
   /* -------------------- Kategoriler -------------------- */
   const fetchSurveys = () => {
@@ -1600,8 +1664,42 @@ const handleDailySkip = async () => {
 
             {/* İsim */}
             <h1 className="text-2xl font-extrabold text-cyan-700 text-center">
-              {user.ad} {user.soyad}
-            </h1>
+  {user.ad} {user.soyad}
+</h1>
+
+{/* === IMPDAY: banner START === */}
+<div className="w-full text-center mt-1">
+  {impDayLoading ? (
+    <div className="text-xs text-gray-400">—</div>
+  ) : (
+    <>
+      {/* 1) Tarih (yıl yok) */}
+      {impDay?.prettyDate ? (
+        <div className="text-sm font-semibold text-emerald-700">
+          {impDay.prettyDate}
+        </div>
+      ) : null}
+
+      {/* 2) Günün başlığı */}
+      {impDay?.daytitle ? (
+        <div className="text-base font-bold text-gray-800 mt-0.5">
+          {impDay.daytitle}
+        </div>
+      ) : null}
+
+      {/* 3) Açıklama */}
+      {impDay?.description ? (
+        <div className="text-xs text-gray-600 mt-1 leading-relaxed">
+          {impDay.description}
+        </div>
+      ) : null}
+    </>
+  )}
+</div>
+{/* === IMPDAY: banner END === */}
+
+<div className="text-sm text-gray-600 mt-2">Günün Yarışmasında başarılar</div>
+
             <div className="text-sm text-gray-600">Günün Yarışmasında başarılar dileriz</div>
 
             {/* Üst kutular */}
