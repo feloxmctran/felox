@@ -653,23 +653,45 @@ useEffect(() => {
     }
   };
 // === IMPDAY: fetch (robust) START ===
-async function fetchImportantDay(dayKey) {
+async function fetchImportantDay(dayKeyIn) {
   setImpDayLoading(true);
+
+  // YYYY-MM-DD’e normalize et
+  const normalize = (v) => {
+    if (!v) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+    const d = new Date(v);
+    if (isNaN(d)) return null;
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 10);
+  };
+
   try {
-    // 1) dayKey geldiyse parametreli endpoint’i dene (ör. /api/daily/impday?day=YYYY-MM-DD)
-    // 2) gelmediyse genel endpoint’i dene (/api/important-day)
-    const url = dayKey
-      ? `${apiUrl}/api/daily/impday?day=${encodeURIComponent(dayKey)}`
-      : `${apiUrl}/api/important-day`;
+    const dayKey = normalize(dayKeyIn);
 
-    const r = await fetch(url);
-    const d = await r.json();
-    if (!isMountedRef.current) return;
+    // ÇALIŞAN endpoint: important-day (day param’lı -> sonra paramsız)
+    const urls = dayKey
+      ? [
+          `${apiUrl}/api/important-day?day=${encodeURIComponent(dayKey)}`,
+          `${apiUrl}/api/important-day`,
+        ]
+      : [`${apiUrl}/api/important-day`];
 
-    // pretty date (20 Ağustos) — dayKey > response.day_key > now
+    let data = null;
+    for (const u of urls) {
+      try {
+        const r = await fetch(u);
+        if (!r.ok) continue;
+        const j = await r.json();
+        if (j?.success) { data = j; break; }
+      } catch {}
+    }
+
+    // Tarihi hazırla (yıl göstermiyoruz)
     const key =
       dayKey ||
-      d?.day_key ||
+      data?.day_key ||
       new Date().toISOString().slice(0, 10);
 
     const prettyDate = new Intl.DateTimeFormat("tr-TR", {
@@ -678,18 +700,13 @@ async function fetchImportantDay(dayKey) {
       month: "long",
     }).format(new Date(key));
 
-    if (d?.success && d?.record) {
-      setImpDay({
-        prettyDate,
-        daytitle: d.record.daytitle || "",
-        description: d.record.description || d.record.desc || "",
-      });
-    } else {
-      // kayıt yoksa sadece tarihi göster
-      setImpDay({ prettyDate, daytitle: "", description: "" });
-    }
+    // record varsa alanları esnek ve trim’leyerek al
+    const rec = data?.record || null;
+    const daytitle = (rec?.daytitle ?? rec?.day_title ?? rec?.title ?? "").trim();
+    const description = (rec?.description ?? rec?.desc ?? rec?.content ?? "").trim();
+
+    setImpDay({ prettyDate, daytitle, description });
   } catch (e) {
-    // hata olursa banner'ı gizleme; en azından tarihi ver
     const prettyDate = new Intl.DateTimeFormat("tr-TR", {
       timeZone: "Europe/Istanbul",
       day: "2-digit",
@@ -697,11 +714,11 @@ async function fetchImportantDay(dayKey) {
     }).format(new Date());
     setImpDay({ prettyDate, daytitle: "", description: "" });
   } finally {
-    if (!isMountedRef.current) return;
     setImpDayLoading(false);
   }
 }
 // === IMPDAY: fetch (robust) END ===
+
 
   /* -------------------- Kategoriler -------------------- */
   const fetchSurveys = () => {
