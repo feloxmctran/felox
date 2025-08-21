@@ -1,5 +1,5 @@
 // src/pages/UserPanel.jsx
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 
 /* -------------------- Universal User Storage -------------------- */
 async function getFeloxUser() {
@@ -122,6 +122,24 @@ const StatusBadge = ({ text, color = "emerald" }) => {
     </span>
   );
 };
+
+/* Hız kademesi görünümü (label + renk) — diakritiklere dayanıklı */
+const tierMeta = (t) => {
+  const key = String(t || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, ""); // â -> a, etc.
+
+  switch (key) {
+    case "alim":      return { label: "Âlim",      color: "emerald" };
+    case "cesur":     return { label: "Cesur",     color: "orange"  };
+    case "tedbirli":  return { label: "Tedbirli",  color: "blue"    };
+    case "garantici": return { label: "Garantici", color: "gray"    };
+    default:          return { label: null,        color: "gray"    };
+  }
+};
+
+
 
 const StatCard = ({ label, children }) => (
   <div className="flex-1 min-w-[30%] bg-white/80 rounded-2xl shadow p-4 text-center h-[91px]">
@@ -267,6 +285,10 @@ export default function UserPanel() {
   // Avatar manifest
   const [avatarManifest, setAvatarManifest] = useState(null);
 
+  // Hız tespiti
+  const [speedTier, setSpeedTier] = useState(null); // {tier, avg_earned_seconds, avg_spent_seconds}
+
+
   // Günün Yarışması
   const [dailyStatus, setDailyStatus] = useState(null); // {success, day_key, finished, index, size, question?}
   const [dailyQuestion, setDailyQuestion] = useState(null);
@@ -289,14 +311,14 @@ const [books, setBooks] = useState(0);
 const [spending, setSpending] = useState(false);
 const [revealed, setRevealed] = useState({ qid: null, answer: "" }); // {qid, 'evet'|'hayır'|'bilmem'}
 
-const fetchBooks = async () => {
-  if (!user) return;
-  try {
-    const r = await fetch(`${apiUrl}/api/user/${user.id}/books`);
-    const d = await r.json();
-    if (d?.success) setBooks(d.books || 0);
-  } catch {}
-};
+const fetchBooks = useCallback(async () => {
+   if (!user) return;
+   try {
+     const r = await fetch(`${apiUrl}/api/user/${user.id}/books`);
+     const d = await r.json();
+     if (d?.success) setBooks(d.books || 0);
+   } catch {}
+}, [user?.id]);
 
 // Aktif soru (solve/dailySolve)
 const getActiveQuestion = () => {
@@ -335,7 +357,7 @@ const highlightBtn = (ans, q) =>
   revealed.qid === q?.id && revealed.answer === ans ? " ring-4 ring-yellow-400 animate-pulse " : "";
 
 // Kullanıcı yüklenince kitap sayısını çek
-useEffect(() => { if (user) fetchBooks(); }, [user]);
+useEffect(() => { fetchBooks(); }, [fetchBooks]);
 
 // Soru/değişimlerde ipucunu sıfırla
 useEffect(() => { setRevealed({ qid: null, answer: "" }); }, [currentIdx, mode, dailyQuestion]);
@@ -554,6 +576,19 @@ useEffect(() => {
           setAnsweredCount(data.answeredCount);
         }
       });
+
+
+      // Hız kademesi
+fetch(`${apiUrl}/api/user/${user.id}/speed-tier`)
+  .then(r => r.json())
+  .then(d => {
+    if (!isMountedRef.current) return;
+    if (d?.success) setSpeedTier(d);
+    else setSpeedTier(null);
+  })
+  .catch(() => { if (isMountedRef.current) setSpeedTier(null); });
+
+
 
     // BUGÜN sıralaması (genel leaderboard)
     setTodayRankLoading(true);
@@ -1316,26 +1351,44 @@ const handleDailySkip = async () => {
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
           <div className="flex flex-col items-center gap-2">
-            {/* Avatar */}
-           {/* === FEL0X: TODAY AVATAR BLOCK START === */}
-          <div className="flex items-center gap-2 mb-2">
-            <div className="rounded-full bg-gray-100 p-1 shadow-md">
-              <img
-                src={getAvatarUrl()}
-                alt="avatar"
-                width={140}
-                height={140}
-                className="w-[140px] h-[140px] rounded-full object-contain"
-              />
-            </div>
-            <BookCountPill count={books} />
-          </div>
-{/* === FEL0X: TODAY AVATAR BLOCK END === */}
+            {/* Avatar + Sağ bilgi bloğu (kitap + hız kademesi) */}
+<div className="flex items-center gap-3 mb-2 w-full">
+  <div className="rounded-full bg-gray-100 p-1 shadow-md">
+    <img
+      src={getAvatarUrl()}
+      alt="avatar"
+      width={140}
+      height={140}
+      className="w-[140px] h-[140px] rounded-full object-contain"
+    />
+  </div>
 
+  <div className="flex-1 min-w-0">
+    <div className="flex items-center gap-2">
+      <h1 className="text-2xl font-extrabold text-cyan-700 truncate">
+        {user.ad} {user.soyad}
+      </h1>
+      {/* Kitap rozetini adın yanına taşıdık */}
+      <BookCountPill count={books} />
+    </div>
 
-            <h1 className="text-2xl font-extrabold text-cyan-700 text-center">
-              {user.ad} {user.soyad}
-            </h1>
+    {/* Hız kademesi + ortalama cevap süresi */}
+    {speedTier?.tier ? (
+      <div className="mt-1">
+        <StatusBadge
+          text={tierMeta(speedTier.tier).label}
+          color={tierMeta(speedTier.tier).color}
+        />
+        <div className="text-xs text-gray-600 mt-0.5">
+          Ort. süre: {Number(speedTier?.avg_spent_seconds || 0).toFixed(1)} sn
+        </div>
+      </div>
+    ) : (
+      <div className="mt-1 text-xs text-gray-400">Hız kad. hesaplanıyor…</div>
+    )}
+  </div>
+</div>
+
 
             {/* Başlık etiketi */}
             {renderBestTitleBadge()}
@@ -1663,7 +1716,6 @@ const handleDailySkip = async () => {
   /* -------------------- GÜNÜN YARIŞMASI (dashboard) -------------------- */
   if (mode === "today") {
     const idx = Number(dailyStatus?.index ?? 0);
-    const size = Number.isFinite(Number(dailyStatus?.size)) ? Number(dailyStatus.size) : 0;
     const finished = !!dailyStatus?.finished;
     const started = !finished && idx > 0;
 
@@ -1676,20 +1728,42 @@ const handleDailySkip = async () => {
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
           <div className="flex flex-col items-center gap-2">
             {/* Avatar */}
-            <div className="rounded-full bg-gray-100 p-1 shadow-md mb-2">
-              <img
-                src={getAvatarUrl()}
-                alt="avatar"
-                width={140}
-                height={140}
-                className="w-[140px] h-[140px] rounded-full object-contain"
-              />
-            </div>
+            {/* Avatar + Sağ bilgi bloğu (kitap + hız kademesi) */}
+<div className="flex items-center gap-3 mb-2 w-full">
+  <div className="rounded-full bg-gray-100 p-1 shadow-md">
+    <img
+      src={getAvatarUrl()}
+      alt="avatar"
+      width={140}
+      height={140}
+      className="w-[140px] h-[140px] rounded-full object-contain"
+    />
+  </div>
 
-            {/* İsim */}
-            <h1 className="text-2xl font-extrabold text-cyan-700 text-center">
-  {user.ad} {user.soyad}
-</h1>
+  <div className="flex-1 min-w-0">
+    <div className="flex items-center gap-2">
+      <h1 className="text-2xl font-extrabold text-cyan-700 truncate">
+        {user.ad} {user.soyad}
+      </h1>
+      <BookCountPill count={books} />
+    </div>
+
+    {speedTier?.tier ? (
+      <div className="mt-1">
+        <StatusBadge
+          text={tierMeta(speedTier.tier).label}
+          color={tierMeta(speedTier.tier).color}
+        />
+        <div className="text-xs text-gray-600 mt-0.5">
+          Ort. süre: {Number(speedTier?.avg_spent_seconds || 0).toFixed(1)} sn
+        </div>
+      </div>
+    ) : (
+      <div className="mt-1 text-xs text-gray-400">Hız kad. hesaplanıyor…</div>
+    )}
+  </div>
+</div>
+
 
 {/* === IMPDAY: banner START === */}
 <div className="w-full text-center mt-1">
@@ -1791,7 +1865,7 @@ const handleDailySkip = async () => {
                     ))}
                     {(!Array.isArray(dailyLeaderboard) || dailyLeaderboard.length === 0) && (
                       <tr>
-                        <td className="p-2 border text-center text-gray-400" colSpan={5}>
+                        <td className="p-2 border text-center text-gray-400" colSpan={6}>
                           Henüz katılım yok.
                         </td>
                       </tr>
