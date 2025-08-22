@@ -1,6 +1,17 @@
 // src/pages/UserPanel.jsx
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import "../styles/starfx.css"; // ⭐ yıldız animasyonu CSS (src/styles/starfx.css)
+import {
+  SunIcon,
+  BoltIcon,
+  BookIcon,
+  DiceIcon,
+  TrophyIcon,
+  CloseIcon,
+  ChartIcon,
+  SpinnerIcon,
+} from "../icons/Icons";
+
 
 // -------------------- Universal User Storage --------------------
 async function getFeloxUser() {
@@ -176,6 +187,130 @@ const tierMeta = (t) => {
   }
 };
 
+/* === TIER HEADING (Cesur başlığı) === */
+const TierHeading = ({ tier }) => {
+  const { label } = tierMeta(tier);
+  if (!label) return null;
+  return (
+    <div className="text-sm font-extrabold text-cyan-700 leading-tight">
+      {label}
+    </div>
+  );
+};
+
+
+/* -------------------- Rütbeler ve hesaplama -------------------- */
+const RANKS = [
+  { name: "Acemi",             min: -Infinity, next: 400 },
+  { name: "Yarışmacı",         min: 400,       next: 800 },
+  { name: "Bilgi Meraklısı",   min: 800,       next: 1400 },
+  { name: "Zihin Avcısı",      min: 1400,      next: 2000 },
+  { name: "Akıl Ustası",       min: 2000,      next: 2800 },
+  { name: "Beyin Fırtınası",   min: 2800,      next: 3600 },
+  { name: "Bilgi Şampiyonu",   min: 3600,      next: 4600 },
+  { name: "Ustalık Seviyesi",  min: 4600,      next: 5400 },
+  { name: "Efsane Yarışmacı",  min: 5400,      next: 6400 },
+  { name: "Bilgelik Ustası",   min: 6400,      next: 7400 },
+  { name: "Strateji Üstadı",   min: 7400,      next: 8400 },
+  { name: "Zeka Fırtınası",    min: 8400,      next: 9600 },
+  { name: "Usta Taktisyen",    min: 9600,      next: 10800 },
+  { name: "Altın Beyin",       min: 10800,     next: 12000 },
+  { name: "Usta Zihin",        min: 12000,     next: 13400 },
+  { name: "Üst Düzey Yarışmacı",min: 13400,    next: 14600 },
+  { name: "Bilgelik Şampiyonu",min: 14600,     next: 15800 },
+  { name: "Efsanevi Zihin",    min: 15800,     next: 17200 },
+  { name: "Zirve Ustası",      min: 17200,     next: 18600 },
+  { name: "Ölümsüz Bilge",     min: 18600,     next: Infinity },
+];
+
+function getRankInfo(points = 0) {
+  let rank = RANKS[RANKS.length - 1];
+  for (const r of RANKS) {
+    if (points < r.next) { rank = r; break; }
+  }
+
+  const idx = RANKS.findIndex(r => r.name === rank.name);
+  const nextRank = rank.next === Infinity ? null : (RANKS[idx + 1]?.name || null);
+
+  const baseline = Math.max(0, Number.isFinite(rank.min) ? rank.min : 0);
+  const next = rank.next;
+  if (next === Infinity) {
+    return { name: rank.name, pct: 100, toNext: null, nextName: null };
+  }
+  const denom = Math.max(1, next - baseline);
+  const num = Math.max(0, Math.min(points - baseline, denom));
+  const pct = Math.round((num / denom) * 100);
+  const toNext = Math.max(0, next - Math.max(points, baseline));
+  return { name: rank.name, pct, toNext, nextName: nextRank };
+}
+
+/* Rütbeye göre bar rengi (gruplandırılmış) */
+const barFillClassByRank = (rankName = "") => {
+  const i = RANKS.findIndex(r => r.name === rankName);
+  if (i <= 1)  return "bg-gradient-to-r from-gray-400 to-gray-500";      // Acemi, Yarışmacı
+  if (i <= 5)  return "bg-gradient-to-r from-emerald-500 to-green-500";   // orta–alt
+  if (i <= 9)  return "bg-gradient-to-r from-cyan-500 to-blue-500";       // orta
+  if (i <= 13) return "bg-gradient-to-r from-indigo-500 to-violet-500";   // orta–üst
+  if (i <= 17) return "bg-gradient-to-r from-fuchsia-500 to-pink-500";    // üst
+  return "bg-gradient-to-r from-amber-500 to-orange-500";                 // en üstler
+};
+
+// --- ProgressBar (animated) ---
+const ProgressBar = ({ pct, colorClass }) => {
+  const [w, setW] = React.useState(0);
+
+  // ilk render ve her pct değişiminde yumuşak geçiş
+  React.useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const clamped = Math.max(0, Math.min(100, pct));
+      setW(clamped);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [pct]);
+
+  return (
+    <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+      <div
+        className={`h-full ${colorClass} transition-all duration-700 ease-out`}
+        style={{ width: `${w}%` }}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(w)}
+      />
+    </div>
+  );
+};
+
+/* === RANK ROW (büyütülmüş başlık) === */
+const RankRow = ({ points, nf }) => {
+  const info = getRankInfo(points);
+  const fillCls = barFillClassByRank(info.name);
+
+  return (
+    <div className="mt-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[15px] font-extrabold text-cyan-700">{info.name}</span>
+        <span
+          className="text-[11px] text-gray-600"
+          title={
+            info.toNext == null
+              ? "En üst rütbe"
+              : `Sonraki rütbe: ${info.nextName}`
+          }
+        >
+          {info.toNext == null ? "En üst rütbe" : `${nf.format(info.toNext)} puan kaldı`}
+        </span>
+      </div>
+      <div className="mt-1">
+        <ProgressBar pct={info.pct} colorClass={fillCls} />
+      </div>
+    </div>
+  );
+};
+
+
+
 /* === SPEEDTIER: parse helper START === */
 // Backend'den gelen farklı şemaları tek formata çevirir
 const parseSpeedTier = (payload) => {
@@ -221,12 +356,12 @@ function PointsTable({ show, onClose, loading, error, data }) {
     <div className="fixed inset-0 z-30 bg-black/50 flex items-center justify-center p-3">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-4 relative">
         <button
-          className="absolute top-2 right-3 text-2xl text-gray-400 hover:text-red-500"
-          onClick={onClose}
-          title="Kapat"
-        >
-          &times;
-        </button>
+  className="absolute top-2 right-3 text-gray-400 hover:text-red-500"
+  onClick={onClose}
+  title="Kapat"
+>
+  <CloseIcon className="w-6 h-6" />
+</button>
         <h3 className="text-xl font-bold mb-3 text-purple-700 text-center">
           Puanlarım (Başlık Bazında)
         </h3>
@@ -244,7 +379,7 @@ function PointsTable({ show, onClose, loading, error, data }) {
                 <tr>
                   <th className="p-2 border">Başlık</th>
                   <th className="p-2 border" title="Denenen (bilmem hariç) / Cevaplanan">
-                    Den./Cev.
+                    D/C
                   </th>
                   <th className="p-2 border">Doğru</th>
                   <th className="p-2 border">Yanlış</th>
@@ -363,6 +498,9 @@ export default function UserPanel() {
   // Günlük Puan Durumu (Leaderboard)
   const [dailyLeaderboard, setDailyLeaderboard] = useState([]);
 
+  // ↓↓↓ YENİ
+const [dailyChampions, setDailyChampions] = useState([]);
+
   // === IMPDAY: state START ===
   const [impDay, setImpDay] = useState(null);          // {prettyDate, daytitle, description}
   const [impDayLoading, setImpDayLoading] = useState(false);
@@ -427,7 +565,7 @@ export default function UserPanel() {
   // Küçük kitap rozeti
   const BookCountPill = ({ count }) => (
     <div className="inline-flex max-w-max items-center gap-1 px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-xl text-xs font-bold border border-yellow-300 shadow-sm">
-      <span role="img" aria-label="book">📚</span> {count}
+      <BookIcon className="w-4 h-4" /> {count}
     </div>
   );
   // === FEL0X: BOOKS STATE END ===
@@ -701,6 +839,23 @@ export default function UserPanel() {
     }
   };
 
+const fetchDailyChampions = async () => {
+  try {
+    const r = await fetch(`${apiUrl}/api/daily/champions`);
+    const d = await r.json();
+    if (!isMountedRef.current) return;
+    if (d?.success && Array.isArray(d.champions)) {
+      setDailyChampions(d.champions.filter(Boolean));
+    } else {
+      setDailyChampions([]);
+    }
+  } catch {
+    if (!isMountedRef.current) return;
+    setDailyChampions([]);
+  }
+};
+
+
   // === IMPDAY: fetch (robust) START ===
   async function fetchImportantDay(dayKeyIn) {
     setImpDayLoading(true);
@@ -934,6 +1089,8 @@ export default function UserPanel() {
       } else {
         setDailyStatus(null);
       }
+      fetchDailyChampions();
+
     } catch {
       if (!isMountedRef.current) return;
       setDailyStatus(null);
@@ -1293,9 +1450,9 @@ export default function UserPanel() {
     if (pct < 40) {
       phrase = `sen ${titleForSentence} konusunda iyisin.`;
     } else if (pct <= 80) {
-      phrase = `sen ${titleForSentence} konusunda bir uzmansın.`;
+      phrase = `sen ${titleForSentence} konusunda çok iyisin.`;
     } else {
-      phrase = `sen ${titleForSentence} konusunda bir dehasın.`;
+      phrase = `sen ${titleForSentence} konusunda müthişsin.`;
     }
 
     return <div className="text-xs text-gray-700 font-medium">{phrase}</div>;
@@ -1391,7 +1548,7 @@ export default function UserPanel() {
   if (!user)
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-500 to-cyan-700">
-        <span className="animate-spin text-4xl text-white">⏳</span>
+        <SpinnerIcon className="w-10 h-10 text-white animate-spin" />
       </div>
     );
 
@@ -1429,20 +1586,19 @@ export default function UserPanel() {
                     {user.ad} {user.soyad}
                   </h1>
                 </div>
+<div className="mt-0.5">
+  <TierHeading tier={speedTier?.tier} />
+</div>
+
+                <RankRow points={totalPoints} nf={nf} />
+
 
                 {/* Hız kademesi + hız bilgisi */}
                 {speedTier?.tier ? (
   <div className="mt-1">
     <div className="flex items-center gap-2 flex-wrap justify-start text-left">
       <StatusBadge
-        text={tierMeta(speedTier.tier).label}
-        color={tierMeta(speedTier.tier).color}
-        size="sm"
-        variant="ghost"
-        className="!text-cyan-700"
-      />
-      <StatusBadge
-        text={`Hızın: ${Number(speedTier?.avg_spent_seconds || 0).toFixed(1)} sn`}
+        text={`Ortalama Hızın: ${Number(speedTier?.avg_spent_seconds || 0).toFixed(1)} sn`}
         color={tierMeta(speedTier.tier).color}
         size="sm"
         variant="ghost"
@@ -1500,7 +1656,7 @@ export default function UserPanel() {
               }}
               title="Günün yarışmasına git"
             >
-              <span className="mr-2">🌞</span> Günün Yarışması
+              <SunIcon className="w-5 h-5 mr-2 inline" /> Günün Yarışması
             </button>
 
             {/* Kademeli Yarış */}
@@ -1510,7 +1666,11 @@ export default function UserPanel() {
               disabled={loadingLevelQuestions}
               title="1 puanlık sorulardan başlayarak seviyeni yükselt!"
             >
-              {loadingLevelQuestions ? "Yükleniyor…" : "⚡ Kademeli Yarış"}
+              {loadingLevelQuestions
+  ? "Yükleniyor…"
+  : (<><BoltIcon className="w-5 h-5 mr-2 inline" /> Kademeli Yarış</>)
+}
+
             </button>
 
             {/* Kategoriler */}
@@ -1519,7 +1679,7 @@ export default function UserPanel() {
               onClick={() => { fetchSurveys(); setMode("list"); }}
               title="Onaylı Kategoriler"
             >
-              <span className="mr-2">📚</span> Kategoriler
+              <BookIcon className="w-5 h-5 mr-2 inline" /> Kategoriler
             </button>
 
             {/* Rastgele Soru */}
@@ -1527,7 +1687,7 @@ export default function UserPanel() {
               className="w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 hover:to-emerald-800 text-white shadow-lg active:scale-95 transition"
               onClick={startRandom}
             >
-              <span className="mr-2">🎲</span> Rastgele Soru
+              <DiceIcon className="w-5 h-5 mr-2 inline" /> Rastgele Soru
             </button>
 
             {/* Genel Puan Tablosu */}
@@ -1538,7 +1698,7 @@ export default function UserPanel() {
                 fetchLeaderboard(activePeriod);
               }}
             >
-              <span className="mr-2">🏆</span> Genel Puan Tablosu
+              <TrophyIcon className="w-5 h-5 mr-2 inline" /> Genel Puan Tablosu
             </button>
           </div>
 
@@ -1554,11 +1714,12 @@ export default function UserPanel() {
             <div className="fixed inset-0 z-30 bg-black/50 flex items-center justify-center p-3">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-4 relative">
                 <button
-                  className="absolute top-2 right-3 text-2xl text-gray-400 hover:text-red-500"
-                  onClick={() => setShowLeaderboard(false)}
-                >
-                  &times;
-                </button>
+  className="absolute top-2 right-3 text-gray-400 hover:text-red-500"
+  onClick={() => setShowLeaderboard(false)}
+>
+  <CloseIcon className="w-6 h-6" />
+</button>
+
                 <h3 className="text-xl font-bold mb-3 text-orange-700 text-center">
                   Genel Puan Tablosu
                 </h3>
@@ -1621,12 +1782,13 @@ export default function UserPanel() {
             <div className="fixed inset-0 z-40 bg-black/50 flex items-center justify-center p-3">
               <div className="bg-white rounded-3xl shadow-2xl p-5 w-full max-w-sm text-center relative">
                 <button
-                  className="absolute top-2 right-3 text-2xl text-gray-400 hover:text-red-500"
-                  onClick={() => setShowLevelUpPrompt(false)}
-                  title="Kapat"
-                >
-                  &times;
-                </button>
+  className="absolute top-2 right-3 text-gray-400 hover:text-red-500"
+  onClick={() => setShowLevelUpPrompt(false)}
+  title="Kapat"
+>
+  <CloseIcon className="w-6 h-6" />
+</button>
+
                 <div className="text-2xl font-bold text-emerald-700 mb-2">
                   Soruları biraz zorlaştıralım mı?
                 </div>
@@ -1683,7 +1845,7 @@ export default function UserPanel() {
             }}
             title="Kategori bazında kendi performansın"
           >
-            <span className="mr-2">📈</span> Puanlarım
+            <ChartIcon className="w-5 h-5 mr-2 inline" /> Puanlarım
           </button>
 
           {surveys.length === 0 ? (
@@ -1734,12 +1896,13 @@ export default function UserPanel() {
             <div className="fixed inset-0 bg-black/40 z-30 flex items-center justify-center p-3">
               <div className="bg-white rounded-2xl shadow-2xl p-5 w-full max-w-md max-h-[85vh] overflow-y-auto relative">
                 <button
-                  className="absolute top-2 right-3 text-2xl font-bold text-gray-500 hover:text-red-600"
-                  onClick={() => setShowSurveyLeaderboard(false)}
-                  title="Kapat"
-                >
-                  &times;
-                </button>
+  className="absolute top-2 right-3 text-gray-500 hover:text-red-600"
+  onClick={() => setShowSurveyLeaderboard(false)}
+  title="Kapat"
+>
+  <CloseIcon className="w-6 h-6" />
+</button>
+
                 <h3 className="text-xl font-bold mb-3 text-orange-700 text-center">
                   {selectedSurvey?.title || "Kategori"} — Puan Tablosu
                 </h3>
@@ -1819,19 +1982,18 @@ export default function UserPanel() {
                     {user.ad} {user.soyad}
                   </h1>
                 </div>
+                <div className="mt-0.5">
+  <TierHeading tier={speedTier?.tier} />
+</div>
 
-                {speedTier?.tier ? (
+                <RankRow points={totalPoints} nf={nf} />
+
+
+              {speedTier?.tier ? (
   <div className="mt-1">
     <div className="flex items-center gap-2 flex-wrap justify-start text-left">
       <StatusBadge
-        text={tierMeta(speedTier.tier).label}
-        color={tierMeta(speedTier.tier).color}
-        size="sm"
-        variant="ghost"
-        className="!text-cyan-700"
-      />
-      <StatusBadge
-        text={`Hızın: ${Number(speedTier?.avg_spent_seconds || 0).toFixed(1)} sn`}
+        text={`Ortalama Hızın: ${Number(speedTier?.avg_spent_seconds || 0).toFixed(1)} sn`}
         color={tierMeta(speedTier.tier).color}
         size="sm"
         variant="ghost"
@@ -1853,6 +2015,7 @@ export default function UserPanel() {
     </div>
   </div>
 )}
+
 
 
               </div> {/* sağ sütun */}
@@ -1917,7 +2080,7 @@ export default function UserPanel() {
 
             {/* Bugünün Puan Durumu */}
             <div className="mt-4">
-              <div className="text-sm font-bold text-gray-700 mb-2">Günün Yarışması Puan Durumu</div>
+              <div className="text-sm font-bold text-gray-700 mb-2">Günün Yarışması Puan Durumu(İlk 10) </div>
               <div className="overflow-auto rounded-xl border">
                 <table className="min-w-full text-xs">
                   <thead className="bg-blue-50">
@@ -1931,30 +2094,82 @@ export default function UserPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(Array.isArray(dailyLeaderboard) ? dailyLeaderboard.filter(Boolean) : []).map((u, i) => (
-                      <tr
-                        key={`${u?.id ?? "row"}-${i}`}
-                        className={String(u?.id) === String(user.id) ? "bg-yellow-50" : ""}
-                      >
-                        <td className="p-2 border text-center">{i + 1}</td>
-                        <td className="p-2 border">{u?.ad ?? "-"}</td>
-                        <td className="p-2 border">{u?.soyad ?? "-"}</td>
-                        <td className="p-2 border text-center">{u?.answered_count ?? 0}</td>
-                        <td className="p-2 border text-center">{u?.total_points ?? 0}</td>
-                        <td className="p-2 border text-center">{u?.time_spent ?? 0}</td>
-                      </tr>
-                    ))}
-                    {(!Array.isArray(dailyLeaderboard) || dailyLeaderboard.length === 0) && (
-                      <tr>
-                        <td className="p-2 border text-center text-gray-400" colSpan={6}>
-                          Henüz katılım yok.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
+  {(Array.isArray(dailyLeaderboard)
+      ? dailyLeaderboard.filter(Boolean).slice(0, 10)   // ← sadece ilk 10
+      : []
+    ).map((u, i) => (
+      <tr
+        key={`${u?.id ?? "row"}-${i}`}
+        className={String(u?.id) === String(user.id) ? "bg-yellow-50" : ""}
+      >
+        <td className="p-2 border text-center">{i + 1}</td>
+        <td className="p-2 border">{u?.ad ?? "-"}</td>
+        <td className="p-2 border">{u?.soyad ?? "-"}</td>
+        <td className="p-2 border text-center">{u?.answered_count ?? 0}</td>
+        <td className="p-2 border text-center">{u?.total_points ?? 0}</td>
+        <td className="p-2 border text-center">{u?.time_spent ?? 0}</td>
+      </tr>
+    ))}
+
+  {(!Array.isArray(dailyLeaderboard) || dailyLeaderboard.length === 0) && (
+    <tr>
+      <td className="p-2 border text-gray-400 text-center" colSpan={6}>
+        Henüz katılım yok.
+      </td>
+    </tr>
+  )}
+</tbody>
+
                 </table>
               </div>
             </div>
+
+{/* Günün Yarışması Birincileri */}
+<div className="mt-4">
+  <div className="text-sm font-bold text-gray-700 mb-2">
+    Günün Yarışması Birincileri
+  </div>
+
+  <div className="overflow-auto rounded-xl border">
+    <table className="min-w-full text-xs">
+      <thead className="bg-emerald-50">
+        <tr>
+          <th className="p-2 border text-left">Ad</th>
+          <th className="p-2 border text-left">Soyad</th>
+          <th className="p-2 border" title="Kazanılan birincilik sayısı">1.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {(Array.isArray(dailyChampions) ? dailyChampions : []).map((u, i) => {
+          // Backend alan adı farklarına dayanıklı olsun:
+          const wins = Number(
+            u?.wins ?? u?.first_count ?? u?.firsts ?? u?.count ?? u?.birincilik ?? 0
+          );
+
+          return (
+            <tr
+              key={`${u?.id ?? "row"}-${i}`}
+              className={String(u?.id) === String(user.id) ? "bg-yellow-50" : ""}
+            >
+              <td className="p-2 border">{u?.ad ?? "-"}</td>
+              <td className="p-2 border">{u?.soyad ?? "-"}</td>
+              <td className="p-2 border text-center">{wins}</td>
+            </tr>
+          );
+        })}
+
+        {(!Array.isArray(dailyChampions) || dailyChampions.length === 0) && (
+          <tr>
+            <td className="p-2 border text-gray-400 text-center" colSpan={3}>
+              Henüz birincilik kaydı yok.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 
             <button
               className="w-full py-2 rounded-2xl font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300 active:scale-95 transition"
@@ -2037,7 +2252,7 @@ export default function UserPanel() {
               disabled={timeLeft === 0 || feedbackActive || books <= 0 || spending || (revealed.qid === q.id)}
               title={books > 0 ? "1 kitap harcar, doğru cevabı gösterir" : "Kitabın yok"}
             >
-              <span className="mr-1">📚</span> Kitap İpucu {`(${books})`}
+              <BookIcon className="w-5 h-5 mr-1 inline" /> Kitap İpucu {`(${books})`}
             </button>
           </div>
           {/* === FEL0X: SOLVE ANSWER BUTTONS END === */}
