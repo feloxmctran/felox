@@ -341,13 +341,14 @@ const parseSpeedTier = (payload) => {
 /* === SPEEDTIER: parse helper END === */
 
 const StatCard = ({ label, children }) => (
-  <div className="flex-1 min-w-[30%] bg-white/80 rounded-2xl shadow p-4 text-center h-[91px]">
-    <div className="text-xs text-gray-500 mb-1">{label}</div>
-    <div className="text-2xl font-extrabold text-emerald-700 leading-none whitespace-nowrap overflow-hidden text-ellipsis tabular-nums">
+  <div className="flex-1 min-w-[45%] sm:min-w-[30%] bg-white/80 rounded-2xl shadow p-3 sm:p-4 text-center h-[80px] sm:h-[91px]">
+    <div className="text-[11px] sm:text-xs text-gray-500 mb-1">{label}</div>
+    <div className="text-xl sm:text-2xl font-extrabold text-emerald-700 leading-none whitespace-nowrap overflow-hidden text-ellipsis tabular-nums">
       {children}
     </div>
   </div>
 );
+
 
 /* -------------------- Puanlarım Modal (başlık bazlı) -------------------- */
 function PointsTable({ show, onClose, loading, error, data }) {
@@ -1568,14 +1569,12 @@ const fetchDailyChampions = async () => {
   /* -------------------- PANEL -------------------- */
   if (mode === "panel") {
     const Box = ({ title, value, caption }) => (
-      <div className="flex-1 min-w-[30%] bg-white/80 rounded-2xl shadow p-4 text-center h-[91px]">
-        <div className="text-xs text-gray-500 mb-1">{title}</div>
-        <div className="text-2xl font-extrabold text-emerald-700">{value}</div>
-        {caption ? (
-          <div className="text-[11px] text-gray-500 mt-0.5">{caption}</div>
-        ) : null}
-      </div>
-    );
+  <div className="flex-1 min-w-[45%] sm:min-w-[30%] bg-white/80 rounded-2xl shadow p-3 sm:p-4 text-center h-[80px] sm:h-[91px]">
+    <div className="text-[11px] sm:text-xs text-gray-500 mb-1">{title}</div>
+    <div className="text-xl sm:text-2xl font-extrabold text-emerald-700">{value}</div>
+    {caption ? <div className="text-[10px] sm:text-[11px] text-gray-500 mt-0.5">{caption}</div> : null}
+  </div>
+);
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
@@ -1585,19 +1584,22 @@ const fetchDailyChampions = async () => {
             <div className="flex items-center gap-3 mb-2 w-full">
               <div className="rounded-full bg-gray-100 p-1 shadow-md">
                 <img
-                  src={getAvatarUrl()}
-                  alt="avatar"
-                  width={140}
-                  height={140}
-                  className="w-[140px] h-[140px] rounded-full object-contain"
-                />
+    src={getAvatarUrl()}
+    alt="avatar"
+    width={128}
+    height={128}
+    className="w-[88px] h-[88px] sm:w-[128px] sm:h-[128px] rounded-full object-contain"
+  />
               </div>
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-extrabold text-cyan-700 truncate">
-                    {user.ad} {user.soyad}
-                  </h1>
+                 <h1 className="font-extrabold text-cyan-700 leading-tight">
+  <span className="block text-xl sm:text-2xl sm:inline">{user.ad}</span>
+  <span className="block text-xl sm:text-2xl sm:inline sm:ml-1">{user.soyad}</span>
+</h1>
+
+
                 </div>
 <div className="mt-0.5">
   <TierHeading tier={speedTier?.tier} />
@@ -1611,7 +1613,7 @@ const fetchDailyChampions = async () => {
   <div className="mt-1">
     <div className="flex items-center gap-2 flex-wrap justify-start text-left">
       <StatusBadge
-        text={`Ortalama Hızın: ${Number(speedTier?.avg_spent_seconds || 0).toFixed(1)} sn`}
+        text={`Ort. hızın: ${Number(speedTier?.avg_spent_seconds || 0).toFixed(1)} sn`}
         color={tierMeta(speedTier.tier).color}
         size="sm"
         variant="ghost"
@@ -1642,7 +1644,7 @@ const fetchDailyChampions = async () => {
             {/* Başlık etiketi */}
             {renderBestTitleBadge()}
 
-            <div className="w-full flex gap-3 mt-3 flex-wrap">
+            <div className="w-full grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
               <Box title="Puanın" value={nf.format(totalPoints)} />
               <Box title="Cevapladığın" value={nf.format(answeredCount)} />
               <Box
@@ -1987,19 +1989,21 @@ const fetchDailyChampions = async () => {
             <div className="flex items-center gap-3 mb-2 w-full">
               <div className="rounded-full bg-gray-100 p-1 shadow-md">
                 <img
-                  src={getAvatarUrl()}
-                  alt="avatar"
-                  width={140}
-                  height={140}
-                  className="w-[140px] h-[140px] rounded-full object-contain"
-                />
+    src={getAvatarUrl()}
+    alt="avatar"
+    width={128}
+    height={128}
+    className="w-[88px] h-[88px] sm:w-[128px] sm:h-[128px] rounded-full object-contain"
+  />
               </div>
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-extrabold text-cyan-700 truncate">
-                    {user.ad} {user.soyad}
-                  </h1>
+                  <h1 className="font-extrabold text-cyan-700 leading-tight">
+  <span className="block text-xl sm:text-2xl sm:inline">{user.ad}</span>
+  <span className="block text-xl sm:text-2xl sm:inline sm:ml-1">{user.soyad}</span>
+</h1>
+
                 </div>
                 <div className="mt-0.5">
   <TierHeading tier={speedTier?.tier} />
@@ -2012,7 +2016,7 @@ const fetchDailyChampions = async () => {
   <div className="mt-1">
     <div className="flex items-center gap-2 flex-wrap justify-start text-left">
       <StatusBadge
-        text={`Ortalama Hızın: ${Number(speedTier?.avg_spent_seconds || 0).toFixed(1)} sn`}
+        text={`Ort. hızın: ${Number(speedTier?.avg_spent_seconds || 0).toFixed(1)} sn`}
         color={tierMeta(speedTier.tier).color}
         size="sm"
         variant="ghost"
@@ -2069,7 +2073,7 @@ const fetchDailyChampions = async () => {
             <div className="text-sm text-gray-600 mt-2">Günün Yarışmasında başarılar</div>
 
             {/* Üst kutular */}
-            <div className="w-full flex gap-3 mt-3 flex-wrap">
+            <div className="w-full grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
               <StatCard label="Cevapladığın">{idx}</StatCard>
               <StatCard label="Puan">{nf.format(dailyPoints)}</StatCard>
               <StatCard label="Bugün">
