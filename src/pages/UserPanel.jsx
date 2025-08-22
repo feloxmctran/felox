@@ -1594,9 +1594,8 @@ const fetchDailyChampions = async () => {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                 <h1 className="font-extrabold text-cyan-700 leading-tight">
-  <span className="block text-xl sm:text-2xl sm:inline">{user.ad}</span>
-  <span className="block text-xl sm:text-2xl sm:inline sm:ml-1">{user.soyad}</span>
+                 <h1 className="text-2xl font-extrabold text-cyan-700 truncate">
+  {user.ad} {user.soyad}
 </h1>
 
 
@@ -1644,7 +1643,7 @@ const fetchDailyChampions = async () => {
             {/* Başlık etiketi */}
             {renderBestTitleBadge()}
 
-            <div className="w-full grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
+            <div className="w-full grid grid-cols-3 gap-2 mt-3">
               <Box title="Puanın" value={nf.format(totalPoints)} />
               <Box title="Cevapladığın" value={nf.format(answeredCount)} />
               <Box
@@ -1664,21 +1663,13 @@ const fetchDailyChampions = async () => {
           <div className="flex flex-col gap-3 mt-6">
             {/* Günün Yarışması */}
             <button
-  className={
-    "w-full py-3 rounded-2xl font-bold bg-blue-600 hover:bg-blue-800 text-white shadow-lg active:scale-95 transition " +
-    (!dailyStatus?.finished ? "cta-glow" : "")
-  }
-  onClick={() => {
-    fetchDailyStatus();
-    setMode("today");
-  }}
+  className="w-full py-3 rounded-2xl font-bold bg-blue-600 hover:bg-blue-800 text-white shadow-lg active:scale-95 transition"
+  onClick={() => { fetchDailyStatus(); setMode("today"); }}
   title="Günün yarışmasına git"
 >
-  {/* Parıltı çizgisi */}
-  {!dailyStatus?.finished && <span className="cta-shine" aria-hidden="true" />}
-
   <SunIcon className="w-5 h-5 mr-2 inline" /> Günün Yarışması
 </button>
+
 
             {/* Kademeli Yarış */}
             <button
@@ -1999,9 +1990,8 @@ const fetchDailyChampions = async () => {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="font-extrabold text-cyan-700 leading-tight">
-  <span className="block text-xl sm:text-2xl sm:inline">{user.ad}</span>
-  <span className="block text-xl sm:text-2xl sm:inline sm:ml-1">{user.soyad}</span>
+                 <h1 className="text-2xl font-extrabold text-cyan-700 truncate">
+  {user.ad} {user.soyad}
 </h1>
 
                 </div>
@@ -2073,7 +2063,7 @@ const fetchDailyChampions = async () => {
             <div className="text-sm text-gray-600 mt-2">Günün Yarışmasında başarılar</div>
 
             {/* Üst kutular */}
-            <div className="w-full grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
+            <div className="w-full grid grid-cols-3 gap-2 mt-3">
               <StatCard label="Cevapladığın">{idx}</StatCard>
               <StatCard label="Puan">{nf.format(dailyPoints)}</StatCard>
               <StatCard label="Bugün">
