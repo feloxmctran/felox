@@ -518,7 +518,7 @@ const [dailyChampions, setDailyChampions] = useState([]);
       const d = await r.json();
       if (d?.success) setBooks(d.books || 0);
     } catch {}
-  }, [user?.id]);
+  }, [user]);
 
   // Aktif soru (solve/dailySolve)
   const getActiveQuestion = () => {
@@ -557,17 +557,30 @@ const [dailyChampions, setDailyChampions] = useState([]);
     revealed.qid === q?.id && revealed.answer === ans ? " ring-4 ring-yellow-400 animate-pulse " : "";
 
   // Kullanıcı yüklenince kitap sayısını çek
-  useEffect(() => { if (user?.id) fetchBooks(); }, [user?.id, fetchBooks]);
+  useEffect(() => { if (user?.id) fetchBooks(); }, [user, fetchBooks]);
 
   // Soru/değişimlerde ipucunu sıfırla
   useEffect(() => { setRevealed({ qid: null, answer: "" }); }, [currentIdx, mode, dailyQuestion]);
 
-  // Küçük kitap rozeti
-  const BookCountPill = ({ count }) => (
-    <div className="inline-flex max-w-max items-center gap-1 px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-xl text-xs font-bold border border-yellow-300 shadow-sm">
-      <BookIcon className="w-4 h-4" /> {count}
-    </div>
+  // Çerçevesiz, tema ile uyumlu sayaç
+const BookCountPill = ({ count = 0, showLabel = false }) => {
+  const n = Number(count) || 0;
+  const has = n > 0;
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-xs font-semibold select-none
+                  ${has ? "text-emerald-700 opacity-90" : "text-gray-500 opacity-80"} 
+                  hover:opacity-100`}
+      title={`Kitap: ${n}`}
+    >
+      <BookIcon className="w-4 h-4 -mt-[1px]" />
+      {showLabel && <span className="hidden sm:inline">Kitap</span>}
+      <span className="tabular-nums text-[13px] font-extrabold">{n}</span>
+    </span>
   );
+};
+
   // === FEL0X: BOOKS STATE END ===
 
   // Kademeli Yarış
@@ -1649,15 +1662,21 @@ const fetchDailyChampions = async () => {
           <div className="flex flex-col gap-3 mt-6">
             {/* Günün Yarışması */}
             <button
-              className="w-full py-3 rounded-2xl font-bold bg-blue-600 hover:bg-blue-800 text-white shadow-lg active:scale-95 transition"
-              onClick={() => {
-                fetchDailyStatus();
-                setMode("today");
-              }}
-              title="Günün yarışmasına git"
-            >
-              <SunIcon className="w-5 h-5 mr-2 inline" /> Günün Yarışması
-            </button>
+  className={
+    "w-full py-3 rounded-2xl font-bold bg-blue-600 hover:bg-blue-800 text-white shadow-lg active:scale-95 transition " +
+    (!dailyStatus?.finished ? "cta-glow" : "")
+  }
+  onClick={() => {
+    fetchDailyStatus();
+    setMode("today");
+  }}
+  title="Günün yarışmasına git"
+>
+  {/* Parıltı çizgisi */}
+  {!dailyStatus?.finished && <span className="cta-shine" aria-hidden="true" />}
+
+  <SunIcon className="w-5 h-5 mr-2 inline" /> Günün Yarışması
+</button>
 
             {/* Kademeli Yarış */}
             <button
@@ -1679,7 +1698,7 @@ const fetchDailyChampions = async () => {
               onClick={() => { fetchSurveys(); setMode("list"); }}
               title="Onaylı Kategoriler"
             >
-              <BookIcon className="w-5 h-5 mr-2 inline" /> Kategoriler
+              <BookIcon className="w-5 h-5 mr-2 inline" /> Kategoride Yarış 
             </button>
 
             {/* Rastgele Soru */}
@@ -1687,7 +1706,7 @@ const fetchDailyChampions = async () => {
               className="w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 hover:to-emerald-800 text-white shadow-lg active:scale-95 transition"
               onClick={startRandom}
             >
-              <DiceIcon className="w-5 h-5 mr-2 inline" /> Rastgele Soru
+              <DiceIcon className="w-5 h-5 mr-2 inline" /> Rastgele Yarış
             </button>
 
             {/* Genel Puan Tablosu */}
