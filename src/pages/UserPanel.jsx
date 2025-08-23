@@ -340,12 +340,17 @@ const parseSpeedTier = (payload) => {
 };
 /* === SPEEDTIER: parse helper END === */
 
-const StatCard = ({ label, children }) => (
-  <div className="flex-1 min-w-[45%] sm:min-w-[30%] bg-white/80 rounded-2xl shadow p-3 sm:p-4 text-center h-[80px] sm:h-[91px]">
-    <div className="text-[11px] sm:text-xs text-gray-500 mb-1">{label}</div>
-    <div className="text-xl sm:text-2xl font-extrabold text-emerald-700 leading-none whitespace-nowrap overflow-hidden text-ellipsis tabular-nums">
+const StatCard = ({ label, children, footer }) => (
+  <div className="flex-1 min-w-[45%] sm:min-w-[30%] bg-white/80 rounded-2xl shadow p-3 sm:p-4 text-center h-[80px] sm:h-[91px] flex flex-col items-center justify-center">
+    <div className="text-[11px] sm:text-xs text-gray-500 mb-0.5">{label}</div>
+    <div className="text-xl sm:text-2xl font-extrabold text-emerald-700 leading-none tabular-nums">
       {children}
     </div>
+    {footer ? (
+      <div className="text-[10px] sm:text-[11px] text-gray-500 mt-0.5">
+        {footer}
+      </div>
+    ) : null}
   </div>
 );
 
@@ -520,6 +525,38 @@ const [dailyChampions, setDailyChampions] = useState([]);
       if (d?.success) setBooks(d.books || 0);
     } catch {}
   }, [user]);
+
+// --- BOOK AWARD HELPERS (finish bonus + genel kitap verme) ---
+const grantBooks = useCallback(async (amount, reason = "") => {
+  if (!user?.id || amount <= 0) return false;
+  try {
+    const r = await fetch(`${apiUrl}/api/books/grant`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: user.id, amount, reason }),
+    });
+    const d = await r.json();
+    if (d?.success) {
+      setBooks((prev) =>
+        typeof d.total === "number" ? d.total : Math.max(0, prev + amount)
+      );
+      return true;
+    }
+  } catch {}
+  return false;
+}, [user?.id]);
+
+const ensureDailyFinishBonus = useCallback(async (dayKey) => {
+  if (!user?.id || !dayKey) return;
+  const guardKey = `finish_bonus_${user.id}_${dayKey}`;
+  if (localStorage.getItem(guardKey) === "1") return; // aynı güne iki kez verme
+  const ok = await grantBooks(2, `daily_finish_${dayKey}`);
+  if (ok) {
+    localStorage.setItem(guardKey, "1");
+    fetchBooks(); // sayacı güncelle
+  }
+}, [user?.id, grantBooks, fetchBooks]);
+
 
   // Aktif soru (solve/dailySolve)
   const getActiveQuestion = () => {
@@ -834,6 +871,15 @@ const BookCountPill = ({ count = 0, showLabel = false }) => {
     else fetchImportantDay(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, dailyStatus?.day_key]);
+
+// Günün yarışması bittiğinde +2 kitap ver
+useEffect(() => {
+  if (dailyStatus?.finished && dailyStatus?.day_key) {
+    ensureDailyFinishBonus(dailyStatus.day_key);
+  }
+}, [dailyStatus?.finished, dailyStatus?.day_key, ensureDailyFinishBonus]);
+
+
   // === IMPDAY: auto fetch (use day_key) END ===
 
   /* -------------------- Günlük Puan Durumu -------------------- */
@@ -2066,30 +2112,39 @@ const fetchDailyChampions = async () => {
             <div className="w-full grid grid-cols-3 gap-2 mt-3">
               <StatCard label="Cevapladığın">{idx}</StatCard>
               <StatCard label="Puan">{nf.format(dailyPoints)}</StatCard>
-              <StatCard label="Bugün">
-                {dailyRank ? `${dailyRank}.` : "-"}
-                <div className="text-[11px] text-gray-500 mt-0.5">sıradasın</div>
-              </StatCard>
+              <StatCard label="Bugün" footer="sıradasın">
+  <span className="leading-none">
+    {dailyRank ? `${dailyRank}.` : "-"}
+  </span>
+</StatCard>
             </div>
           </div>
 
           {/* Butonlar */}
           <div className="flex flex-col gap-2 mt-6">
-            <button
-              className="w-full py-3 rounded-2xl font-bold bg-blue-600 hover:bg-blue-800 text-white shadow-lg active:scale-95 transition"
-              onClick={startOrContinueDaily}
-              title={started ? "Devam Et" : "Yarışmaya Başla"}
-              disabled={dailyLoading || finished}
-            >
-              <span className="mr-2">🏁</span>
-              {started ? "Devam Et" : "Yarışmaya Başla"}
-            </button>
+           {/* FINISHED => buton YOK, mesaj VAR */}
+  {finished ? (
+    <div className="mt-1 p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-sm">
+      Tebrikler 🎉 Puanların genel puanlarına eklendi ve yarışmayı tamamladığın için
+    <b> 2 adet kitap ipucu</b> kazandın. 
+    </div>
+  ) : (
+    <button
+      className="w-full py-3 rounded-2xl font-bold bg-blue-600 hover:bg-blue-800 text-white shadow-lg active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
+      onClick={startOrContinueDaily}
+      title={started ? "Devam Et" : "Yarışmaya Başla"}
+      disabled={dailyLoading}
+    >
+      <span className="mr-2">🏁</span>
+      {started ? "Devam Et" : "Yarışmaya Başla"}
+    </button>
+  )}
 
-            {dailyError && (
-              <div className="px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
-                {dailyError}
-              </div>
-            )}
+  {dailyError && (
+    <div className="px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+      {dailyError}
+    </div>
+  )}
 
             {/* Bugünün Puan Durumu */}
             <div className="mt-4">
@@ -2185,19 +2240,13 @@ const fetchDailyChampions = async () => {
 
 
             <button
-              className="w-full py-2 rounded-2xl font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300 active:scale-95 transition"
-              onClick={() => setMode("panel")}
-              title="Panele dön"
-            >
-              ← Panele Dön
-            </button>
-
-            {finished && (
-              <div className="mt-1 p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-sm">
-                Bugünün yarışmasını tamamladın 🎉 Puanların genel puanlarına eklendi.
-              </div>
-            )}
-          </div>
+    className="w-full py-2 rounded-2xl font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300 active:scale-95 transition"
+    onClick={() => setMode("panel")}
+    title="Panele dön"
+  >
+    ← Panele Dön
+  </button>
+</div>
         </div>
       </div>
     );
