@@ -337,8 +337,13 @@ const parseSpeedTier = (payload) => {
     num(src.avg_earned_seconds ?? src.avg_earned ?? src.average_earned_seconds);
 
   return tier ? { tier, avg_spent_seconds, avg_earned_seconds } : null;
+
+
+  
 };
 /* === SPEEDTIER: parse helper END === */
+
+
 
 const StatCard = ({ label, children, footer }) => (
   <div className="flex-1 min-w-[45%] sm:min-w-[30%] bg-white/80 rounded-2xl shadow p-3 sm:p-4 text-center h-[80px] sm:h-[91px] flex flex-col items-center justify-center">
@@ -636,6 +641,22 @@ const BookCountPill = ({ count = 0, showLabel = false }) => {
     return () => clearTimeout(safety);
   }, [feedbackActive]);
 
+  // === SPEEDTIER: fetch helper (reusable) START ===
+const fetchSpeedTier = useCallback(async () => {
+  if (!user?.id) return;
+  try {
+    const r = await fetch(`${apiUrl}/api/user/${user.id}/speed-tier?ts=${Date.now()}`);
+    const d = await r.json();
+    if (!isMountedRef.current) return;
+    const parsed = parseSpeedTier(d);
+    setSpeedTier(parsed); // {tier, avg_spent_seconds, avg_earned_seconds} | null
+  } catch {
+    if (isMountedRef.current) setSpeedTier(null);
+  }
+}, [user?.id]);
+// === SPEEDTIER: fetch helper (reusable) END ===
+
+
   /* -------------------- Yardımcılar -------------------- */
   const fetchRandomQuote = async () => {
     setQuoteLoading(true);
@@ -781,18 +802,9 @@ const BookCountPill = ({ count = 0, showLabel = false }) => {
         }
       });
 
-    // === SPEEDTIER: fetch (robust) START ===
-    fetch(`${apiUrl}/api/user/${user.id}/speed-tier`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (!isMountedRef.current) return;
-        const parsed = parseSpeedTier(d);
-        setSpeedTier(parsed); // {tier, avg_spent_seconds, avg_earned_seconds} | null
-      })
-      .catch(() => {
-        if (isMountedRef.current) setSpeedTier(null);
-      });
-    // === SPEEDTIER: fetch (robust) END ===
+   // === SPEEDTIER: fetch (on mount) ===
+fetchSpeedTier();
+
 
     // Avatar için en iyi başlık ve yüzdesi
     fetch(`${apiUrl}/api/user/${user.id}/performance`)
@@ -1235,6 +1247,7 @@ const fetchDailyChampions = async () => {
       const d = await fetch(`${apiUrl}/api/user/${user.id}/rank?period=today`).then((x) => x.json());
       setTodayRank(d?.success ? d.rank : null);
     } catch {}
+    await fetchSpeedTier();
   };
 
   const handleDailyAnswer = (cevap, opts = { exitAfter: false }) => () => {
@@ -1347,6 +1360,8 @@ const fetchDailyChampions = async () => {
           setStarsCount(stars ? Math.max(1, Math.min(q.point || 1, 10)) : 1);
           setShowStars(stars && d.is_correct === 1);
           setFeedbackActive(true);
+          refreshUserStats(); // hız/puan anında tazelensin
+
 
           if (ladderActive && cevap !== "bilmem") {
             setLadderAttempts((prev) => prev + 1);
@@ -1355,26 +1370,24 @@ const fetchDailyChampions = async () => {
 
           if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
           feedbackTimeoutRef.current = setTimeout(async () => {
-            if (!isMountedRef.current) return;
-            setFeedbackActive(false);
-            setShowStars(false);
+  if (!isMountedRef.current) return;
+  setFeedbackActive(false);
+  setShowStars(false);
 
-            if (d.is_correct === 1) {
-              setCorrectAnswered((prev) => [...prev, q.id]);
-            }
+  if (d.is_correct === 1) {
+    setCorrectAnswered((prev) => [...prev, q.id]);
+  }
 
-            refreshUserStats();
+  // ←←← BURASI YENİ: İlerle / seviye kontrolü / bitir
+  if (currentIdx < questions.length - 1) {
+    setCurrentIdx((prev) => prev + 1);
+  } else if (ladderActive) {
+    await checkLadderProgress();        // ← artık kullanılıyor -> uyarı biter
+  } else {
+    setMode("thankyou");
+  }
+}, 3200);
 
-            if (currentIdx < questions.length - 1) {
-              setCurrentIdx((prev) => prev + 1);
-            } else {
-              if (ladderActive) {
-                await checkLadderProgress();
-              } else {
-                setMode("thankyou");
-              }
-            }
-          }, 3200);
         } else {
           setInfo(d.error || "Cevap kaydedilemedi!");
         }
@@ -1403,6 +1416,7 @@ const fetchDailyChampions = async () => {
       setBooks((prev) => prev + Number(d.awarded_books));
     }
   } catch {}
+  await refreshUserStats();
   await fetchDailyStatus();
   setDailyActive(false);
   setMode("today");
@@ -1527,6 +1541,14 @@ const fetchDailyChampions = async () => {
     return i === -1 ? null : i + 1;
   }, [dailyLeaderboard, user?.id]);
   // === FEL0X: LOCALE & DAILY RANK MEMO END ===
+
+  useEffect(() => {
+  if (!user?.id) return;
+  if (mode === "panel" || mode === "today") {
+    fetchSpeedTier();
+  }
+}, [mode, user?.id, fetchSpeedTier]);
+
 
   // === FEL0X: LEADERBOARD PARALLEL PREFETCH START ===
   useEffect(() => {
