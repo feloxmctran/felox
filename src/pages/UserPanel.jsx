@@ -526,37 +526,6 @@ const [dailyChampions, setDailyChampions] = useState([]);
     } catch {}
   }, [user]);
 
-// --- BOOK AWARD HELPERS (finish bonus + genel kitap verme) ---
-const grantBooks = useCallback(async (amount, reason = "") => {
-  if (!user?.id || amount <= 0) return false;
-  try {
-    const r = await fetch(`${apiUrl}/api/books/grant`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: user.id, amount, reason }),
-    });
-    const d = await r.json();
-    if (d?.success) {
-      setBooks((prev) =>
-        typeof d.total === "number" ? d.total : Math.max(0, prev + amount)
-      );
-      return true;
-    }
-  } catch {}
-  return false;
-}, [user?.id]);
-
-const ensureDailyFinishBonus = useCallback(async (dayKey) => {
-  if (!user?.id || !dayKey) return;
-  const guardKey = `finish_bonus_${user.id}_${dayKey}`;
-  if (localStorage.getItem(guardKey) === "1") return; // aynı güne iki kez verme
-  const ok = await grantBooks(2, `daily_finish_${dayKey}`);
-  if (ok) {
-    localStorage.setItem(guardKey, "1");
-    fetchBooks(); // sayacı güncelle
-  }
-}, [user?.id, grantBooks, fetchBooks]);
-
 
   // Aktif soru (solve/dailySolve)
   const getActiveQuestion = () => {
@@ -874,10 +843,11 @@ const BookCountPill = ({ count = 0, showLabel = false }) => {
 
 // Günün yarışması bittiğinde +2 kitap ver
 useEffect(() => {
-  if (dailyStatus?.finished && dailyStatus?.day_key) {
-    ensureDailyFinishBonus(dailyStatus.day_key);
-  }
-}, [dailyStatus?.finished, dailyStatus?.day_key, ensureDailyFinishBonus]);
+   if (dailyStatus?.finished) {
+     // bitişten sonra sunucudaki güncel kitap sayısını çek
+     fetchBooks();
+   }
+ }, [dailyStatus?.finished, fetchBooks]);
 
 
   // === IMPDAY: auto fetch (use day_key) END ===
@@ -1296,10 +1266,15 @@ const fetchDailyChampions = async () => {
         }),
       })
         .then((res) => res.json())
-        .then(async (d) => {
-          let msg = "";
-          let stars = false;
-          let starCount = 1;
+.then(async (d) => {
+  // bitirince backend ödül verdiyse sayaçta hemen göster
+  if (Number(d?.awarded_books) > 0) {
+    setBooks((prev) => prev + Number(d.awarded_books));
+  }
+
+  let msg = "";
+  let stars = false;
+  let starCount = 1;
 
           if (cevap === "bilmem") msg = "ÖĞREN DE GEL";
           else if (d.is_correct === 1) {
@@ -1409,23 +1384,30 @@ const fetchDailyChampions = async () => {
 
   /* --- Günlük: Şimdilik bu kadar (skip endpoint) --- */
   const handleDailySkip = async () => {
-    if (!user || !dailyQuestion) return;
-    try {
-      await fetch(`${apiUrl}/api/daily/skip`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.id,
-          question_id: dailyQuestion.id,
-          time_left_seconds: timeLeft,
-          max_time_seconds: 24,
-        }),
-      });
-    } catch {}
-    await fetchDailyStatus();
-    setDailyActive(false);
-    setMode("today");
-  };
+  if (!user || !dailyQuestion) return;
+  try {
+    const r = await fetch(`${apiUrl}/api/daily/skip`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: user.id,
+        question_id: dailyQuestion.id,
+        time_left_seconds: timeLeft,
+        max_time_seconds: 24,
+      }),
+    });
+
+    // yanıtı oku ve varsa ödülü ekle
+    const d = await r.json();
+    if (Number(d?.awarded_books) > 0) {
+      setBooks((prev) => prev + Number(d.awarded_books));
+    }
+  } catch {}
+  await fetchDailyStatus();
+  setDailyActive(false);
+  setMode("today");
+};
+
   // === FEL0X: ANSWER HANDLERS END ===
 
   /* -------------------- Çıkış -------------------- */
