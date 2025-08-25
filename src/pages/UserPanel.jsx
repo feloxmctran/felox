@@ -170,6 +170,18 @@ const StatusBadge = ({ text, color = "emerald", size = "xs", variant = "solid", 
   );
 };
 
+const Toast = ({ toast }) => {
+  if (!toast) return null;
+  const base = toast.type === "error" ? "bg-red-600" : "bg-emerald-600";
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60]">
+      <div className={`px-4 py-2 rounded-xl shadow-lg text-white text-sm font-semibold ${base}`}>
+        {toast.msg}
+      </div>
+    </div>
+  );
+};
+
 
 /* Hız kademesi görünümü (label + renk) — diakritiklere dayanıklı */
 const tierMeta = (t) => {
@@ -482,6 +494,17 @@ export default function UserPanel() {
   const [showStars, setShowStars] = useState(false);
   const [starsCount, setStarsCount] = useState(1);
 
+  // Toast (seri bonus bildirimi)
+const [toast, setToast] = useState(null); // { msg, type: 'success' | 'error' }
+const toastTimeoutRef = useRef(null);
+
+const showToast = useCallback((msg, type = "success") => {
+  setToast({ msg, type });
+  if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+  toastTimeoutRef.current = setTimeout(() => setToast(null), 3000);
+}, []);
+
+
   // Puanlarım (performans)
   const [showMyPerf, setShowMyPerf] = useState(false);
   const [myPerf, setMyPerf] = useState([]);
@@ -624,12 +647,14 @@ const BookCountPill = ({ count = 0, showLabel = false }) => {
   const feedbackTimeoutRef = useRef(null);
   const isMountedRef = useRef(false);
   useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
-    };
-  }, []);
+  isMountedRef.current = true;
+  return () => {
+    isMountedRef.current = false;
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); // ← eklendi
+  };
+}, []);
+
 
   useEffect(() => {
     if (!feedbackActive) return;
@@ -1284,6 +1309,18 @@ const fetchDailyChampions = async () => {
   if (Number(d?.awarded_books) > 0) {
     setBooks((prev) => prev + Number(d.awarded_books));
   }
+
+// Seri bonus puanı geldiyse bildir
+const bonusPoints = Number(
+  d?.bonus_points ??
+  d?.streak_bonus_points ??
+  (d?.bonus && d.bonus.points) ??
+  0
+);
+if (bonusPoints > 0) {
+  showToast(`Seri bonusu: +${bonusPoints} puan 🎉`, "success");
+}
+
 
   let msg = "";
   let stars = false;
@@ -2112,6 +2149,18 @@ const fetchDailyChampions = async () => {
 
             <div className="text-sm text-gray-600 mt-2">Günün Yarışmasında başarılar</div>
 
+            {/* ← BUNUN HEMEN ALTINA EKLEYİN */}
+{typeof dailyStatus?.streak === "number" && (
+  <div className="mt-1">
+    <StatusBadge text={`Seri: ${dailyStatus.streak} gün`} color="purple" />
+    {dailyStatus?.bonus_eligible ? (
+      <span className="ml-2 text-xs text-emerald-700 font-semibold">
+        Bugün tamamlarsan +1 puan
+      </span>
+    ) : null}
+  </div>
+)}
+
             {/* Üst kutular */}
             <div className="w-full grid grid-cols-3 gap-2 mt-3">
               <StatCard label="Cevapladığın">{idx}</StatCard>
@@ -2420,6 +2469,8 @@ const fetchDailyChampions = async () => {
               {showStars && <Stars count={starsCount} />}
             </div>
           )}
+          <Toast toast={toast} />
+
         </div>
       </div>
     );
