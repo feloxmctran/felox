@@ -170,18 +170,6 @@ const StatusBadge = ({ text, color = "emerald", size = "xs", variant = "solid", 
   );
 };
 
-const Toast = ({ toast }) => {
-  if (!toast) return null;
-  const base = toast.type === "error" ? "bg-red-600" : "bg-emerald-600";
-  return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60]">
-      <div className={`px-4 py-2 rounded-xl shadow-lg text-white text-sm font-semibold ${base}`}>
-        {toast.msg}
-      </div>
-    </div>
-  );
-};
-
 
 /* Hız kademesi görünümü (label + renk) — diakritiklere dayanıklı */
 const tierMeta = (t) => {
@@ -349,13 +337,8 @@ const parseSpeedTier = (payload) => {
     num(src.avg_earned_seconds ?? src.avg_earned ?? src.average_earned_seconds);
 
   return tier ? { tier, avg_spent_seconds, avg_earned_seconds } : null;
-
-
-  
 };
 /* === SPEEDTIER: parse helper END === */
-
-
 
 const StatCard = ({ label, children, footer }) => (
   <div className="flex-1 min-w-[45%] sm:min-w-[30%] bg-white/80 rounded-2xl shadow p-3 sm:p-4 text-center h-[80px] sm:h-[91px] flex flex-col items-center justify-center">
@@ -493,17 +476,6 @@ export default function UserPanel() {
   const [feedbackActive, setFeedbackActive] = useState(false);
   const [showStars, setShowStars] = useState(false);
   const [starsCount, setStarsCount] = useState(1);
-
-  // Toast (seri bonus bildirimi)
-const [toast, setToast] = useState(null); // { msg, type: 'success' | 'error' }
-const toastTimeoutRef = useRef(null);
-
-const showToast = useCallback((msg, type = "success") => {
-  setToast({ msg, type });
-  if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-  toastTimeoutRef.current = setTimeout(() => setToast(null), 3000);
-}, []);
-
 
   // Puanlarım (performans)
   const [showMyPerf, setShowMyPerf] = useState(false);
@@ -647,14 +619,12 @@ const BookCountPill = ({ count = 0, showLabel = false }) => {
   const feedbackTimeoutRef = useRef(null);
   const isMountedRef = useRef(false);
   useEffect(() => {
-  isMountedRef.current = true;
-  return () => {
-    isMountedRef.current = false;
-    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
-    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); // ← eklendi
-  };
-}, []);
-
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!feedbackActive) return;
@@ -665,22 +635,6 @@ const BookCountPill = ({ count = 0, showLabel = false }) => {
     }, 5000);
     return () => clearTimeout(safety);
   }, [feedbackActive]);
-
-  // === SPEEDTIER: fetch helper (reusable) START ===
-const fetchSpeedTier = useCallback(async () => {
-  if (!user?.id) return;
-  try {
-    const r = await fetch(`${apiUrl}/api/user/${user.id}/speed-tier?ts=${Date.now()}`);
-    const d = await r.json();
-    if (!isMountedRef.current) return;
-    const parsed = parseSpeedTier(d);
-    setSpeedTier(parsed); // {tier, avg_spent_seconds, avg_earned_seconds} | null
-  } catch {
-    if (isMountedRef.current) setSpeedTier(null);
-  }
-}, [user?.id]);
-// === SPEEDTIER: fetch helper (reusable) END ===
-
 
   /* -------------------- Yardımcılar -------------------- */
   const fetchRandomQuote = async () => {
@@ -827,9 +781,18 @@ const fetchSpeedTier = useCallback(async () => {
         }
       });
 
-   // === SPEEDTIER: fetch (on mount) ===
-fetchSpeedTier();
-
+    // === SPEEDTIER: fetch (robust) START ===
+    fetch(`${apiUrl}/api/user/${user.id}/speed-tier`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!isMountedRef.current) return;
+        const parsed = parseSpeedTier(d);
+        setSpeedTier(parsed); // {tier, avg_spent_seconds, avg_earned_seconds} | null
+      })
+      .catch(() => {
+        if (isMountedRef.current) setSpeedTier(null);
+      });
+    // === SPEEDTIER: fetch (robust) END ===
 
     // Avatar için en iyi başlık ve yüzdesi
     fetch(`${apiUrl}/api/user/${user.id}/performance`)
@@ -1272,7 +1235,6 @@ const fetchDailyChampions = async () => {
       const d = await fetch(`${apiUrl}/api/user/${user.id}/rank?period=today`).then((x) => x.json());
       setTodayRank(d?.success ? d.rank : null);
     } catch {}
-    await fetchSpeedTier();
   };
 
   const handleDailyAnswer = (cevap, opts = { exitAfter: false }) => () => {
@@ -1309,15 +1271,6 @@ const fetchDailyChampions = async () => {
   if (Number(d?.awarded_books) > 0) {
     setBooks((prev) => prev + Number(d.awarded_books));
   }
-
-// Seri bonus puanı geldiyse bildir
-const bonusPer = Number(dailyStatus?.today_bonus_per_correct ?? 0);
-const bonusPoints = d.is_correct === 1 ? bonusPer : 0;
-if (bonusPoints > 0) {
-  showToast(`Seri bonusu bugün: +${bonusPoints} puan 🎉`, "success");
-}
-
-
 
   let msg = "";
   let stars = false;
@@ -1394,8 +1347,6 @@ if (bonusPoints > 0) {
           setStarsCount(stars ? Math.max(1, Math.min(q.point || 1, 10)) : 1);
           setShowStars(stars && d.is_correct === 1);
           setFeedbackActive(true);
-          refreshUserStats(); // hız/puan anında tazelensin
-
 
           if (ladderActive && cevap !== "bilmem") {
             setLadderAttempts((prev) => prev + 1);
@@ -1404,24 +1355,26 @@ if (bonusPoints > 0) {
 
           if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
           feedbackTimeoutRef.current = setTimeout(async () => {
-  if (!isMountedRef.current) return;
-  setFeedbackActive(false);
-  setShowStars(false);
+            if (!isMountedRef.current) return;
+            setFeedbackActive(false);
+            setShowStars(false);
 
-  if (d.is_correct === 1) {
-    setCorrectAnswered((prev) => [...prev, q.id]);
-  }
+            if (d.is_correct === 1) {
+              setCorrectAnswered((prev) => [...prev, q.id]);
+            }
 
-  // ←←← BURASI YENİ: İlerle / seviye kontrolü / bitir
-  if (currentIdx < questions.length - 1) {
-    setCurrentIdx((prev) => prev + 1);
-  } else if (ladderActive) {
-    await checkLadderProgress();        // ← artık kullanılıyor -> uyarı biter
-  } else {
-    setMode("thankyou");
-  }
-}, 3200);
+            refreshUserStats();
 
+            if (currentIdx < questions.length - 1) {
+              setCurrentIdx((prev) => prev + 1);
+            } else {
+              if (ladderActive) {
+                await checkLadderProgress();
+              } else {
+                setMode("thankyou");
+              }
+            }
+          }, 3200);
         } else {
           setInfo(d.error || "Cevap kaydedilemedi!");
         }
@@ -1450,7 +1403,6 @@ if (bonusPoints > 0) {
       setBooks((prev) => prev + Number(d.awarded_books));
     }
   } catch {}
-  await refreshUserStats();
   await fetchDailyStatus();
   setDailyActive(false);
   setMode("today");
@@ -1575,14 +1527,6 @@ if (bonusPoints > 0) {
     return i === -1 ? null : i + 1;
   }, [dailyLeaderboard, user?.id]);
   // === FEL0X: LOCALE & DAILY RANK MEMO END ===
-
-  useEffect(() => {
-  if (!user?.id) return;
-  if (mode === "panel" || mode === "today") {
-    fetchSpeedTier();
-  }
-}, [mode, user?.id, fetchSpeedTier]);
-
 
   // === FEL0X: LEADERBOARD PARALLEL PREFETCH START ===
   useEffect(() => {
@@ -2146,28 +2090,6 @@ if (bonusPoints > 0) {
 
             <div className="text-sm text-gray-600 mt-2">Günün Yarışmasında başarılar</div>
 
-            {/* ← BUNUN HEMEN ALTINA EKLEYİN */}
-{typeof dailyStatus?.streak_current === "number" && (
-  <div className="mt-1">
-    <StatusBadge
-      text={`Seri: ${dailyStatus.streak_current} gün`}
-      color="emerald"   // mor yerine tema uyumlu yeşil
-      size="md"         // bir tık daha büyük
-      className="!px-3 !py-1.5" // pedingi de büyüt
-    />
-    {(dailyStatus?.today_bonus_per_correct ?? 0) > 0 && (
-      <StatusBadge
-        text={`Bugün +${dailyStatus.today_bonus_per_correct}/doğru`}
-        color="orange"
-        size="sm"
-        className="ml-2"
-      />
-    )}
-  </div>
-)}
-
-
-
             {/* Üst kutular */}
             <div className="w-full grid grid-cols-3 gap-2 mt-3">
               <StatCard label="Cevapladığın">{idx}</StatCard>
@@ -2341,22 +2263,6 @@ if (bonusPoints > 0) {
           <div className="text-lg font-semibold mb-4">{q.question}</div>
           <div className="text-2xl font-bold text-cyan-600 mb-3">
             Puan: {q.point}
-            {typeof dailyStatus?.streak_current === "number" && (
-  <div className="mb-2">
-    <StatusBadge
-      text={`Seri: ${dailyStatus.streak_current} gün`}
-      color="purple"
-    />
-    {(dailyStatus?.today_bonus_per_correct ?? 0) > 0 && (
-      <StatusBadge
-        text={`Bugün Bonus: +${dailyStatus.today_bonus_per_correct} / Doğru`}
-        color="orange"
-        className="ml-2"
-      />
-    )}
-  </div>
-)}
-
           </div>
 
           {/* === FEL0X: SOLVE ANSWER BUTTONS START === */}
@@ -2492,8 +2398,6 @@ if (bonusPoints > 0) {
               {showStars && <Stars count={starsCount} />}
             </div>
           )}
-          <Toast toast={toast} />
-
         </div>
       </div>
     );
