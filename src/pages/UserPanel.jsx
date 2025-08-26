@@ -494,6 +494,8 @@ export default function UserPanel() {
   const [showStars, setShowStars] = useState(false);
   const [starsCount, setStarsCount] = useState(1);
 
+  
+
   // Toast (seri bonus bildirimi)
 const [toast, setToast] = useState(null); // { msg, type: 'success' | 'error' }
 const toastTimeoutRef = useRef(null);
@@ -777,16 +779,55 @@ const fetchSpeedTier = useCallback(async () => {
   };
 
   const ensureSurveyLoadedFor = async (surveyId) => {
-    if (!surveyId) return;
-    if (!surveyQuestionsCacheRef.current[surveyId]) {
-      const r = await fetch(`${apiUrl}/api/surveys/${surveyId}/questions`);
+  if (!surveyId) return;
+  if (surveyQuestionsCacheRef.current[surveyId]) return;
+
+  const urls = [
+    `${apiUrl}/api/surveys/${surveyId}/questions`, // yeni uç
+    `${apiUrl}/api/surveys/${surveyId}/details`,   // eski uç (fallback)
+  ];
+
+  let qs = null;
+  let titleFromDetails = null;
+
+  for (const u of urls) {
+    try {
+      const r = await fetch(u);
       const d = await r.json();
       if (!isMountedRef.current) return;
-      if (d?.success && Array.isArray(d.questions)) {
-        indexQuestionsIntoCaches(d.questions);
+
+      // /questions -> { success, questions:[...] }
+      if (u.endsWith("/questions") && d?.success && Array.isArray(d.questions)) {
+        qs = d.questions;
+        break;
       }
+
+      // /details -> { success, survey:{title}, questions:[...] }
+      if (u.endsWith("/details") && d?.success && Array.isArray(d.questions)) {
+        qs = d.questions;
+        titleFromDetails = d?.survey?.title || null;
+        break;
+      }
+    } catch {
+      // bir sonrakini dene
     }
-  };
+  }
+
+  if (!Array.isArray(qs)) return;
+
+  // Soru-anket önbelleklerini besle
+  indexQuestionsIntoCaches(qs);
+
+  // /details'tan geldiyse başlık haritasını da güncelle
+  if (titleFromDetails) {
+    setSurveyTitleById((prev) => ({ ...prev, [surveyId]: titleFromDetails }));
+    const rest = (surveysCacheRef.current || []).filter(
+      (s) => String(s.id) !== String(surveyId)
+    );
+    surveysCacheRef.current = [...rest, { id: Number(surveyId), title: titleFromDetails }];
+  }
+};
+
 
   // Gerekirse sorunun anketini bul
   const resolveSurveyIdForQuestion = async (questionId) => {
@@ -986,40 +1027,118 @@ const fetchDailyChampions = async () => {
 
   /* -------------------- Kategoriler -------------------- */
   const fetchSurveys = () => {
-    fetch(`${apiUrl}/api/user/approved-surveys`)
-      .then((res) => res.json())
-      .then((d) => {
-        if (!isMountedRef.current) return;
-        if (d.success) {
-          setSurveys(Array.isArray(d.surveys) ? d.surveys : []);
-          const map = {};
-          (d.surveys || []).forEach((s) => (map[s.id] = s.title));
-          setSurveyTitleById((prev) => ({ ...prev, ...map }));
-          surveysCacheRef.current = d.surveys || [];
-        } else setSurveys([]);
-      })
-      .catch(() => setSurveys([]));
-  };
+  const urls = [
+    `${apiUrl}/api/user/approved-surveys`,
+    `${apiUrl}/api/approved-surveys`,
+    `${apiUrl}/api/categories/approved`,
+  ];
+
+  (async () => {
+    let payload = null;
+    for (const u of urls) {
+      try {
+        const res = await fetch(u);
+        const d = await res.json();
+        if (d?.success && Array.isArray(d.surveys)) {
+          payload = d.surveys;
+          break;
+        }
+      } catch { /* bir sonrakini dene */ }
+    }
+
+    if (!isMountedRef.current) return;
+
+    if (Array.isArray(payload)) {
+      setSurveys(payload);
+
+      // title haritasını güncelle + cache’i doldur
+      const map = {};
+      payload.forEach((s) => (map[s.id] = s.title));
+      setSurveyTitleById((prev) => ({ ...prev, ...map }));
+      surveysCacheRef.current = payload;
+    } else {
+      setSurveys([]);
+      surveysCacheRef.current = [];
+    }
+  })();
+};
+
 
   const fetchQuestions = (surveyId) => {
-    fetch(`${apiUrl}/api/surveys/${surveyId}/questions`)
-      .then((res) => res.json())
-      .then((d) => {
-        if (!isMountedRef.current) return;
-        if (d.success) {
-          const filtered = (d.questions || []).filter(
-            (q) => !correctAnswered.includes(q.id)
-          );
-          indexQuestionsIntoCaches(d.questions || []);
-          shuffleInPlace(filtered);
-          setQuestions(filtered);
-          setCurrentIdx(0);
-          setMode("solve");
-          setLadderActive(false);
-          setDailyActive(false);
+  (async () => {
+    const urls = [
+      `${apiUrl}/api/surveys/${surveyId}/questions`, // yeni uç
+      `${apiUrl}/api/surveys/${surveyId}/details`,   // eski uç (fallback)
+    ];
+
+    let qs = null;
+
+    for (const u of urls) {
+      try {
+        const res = await fetch(u);
+        const d = await res.json();
+
+        // 1) /questions yanıtı
+        if (u.endsWith("/questions") && d?.success && Array.isArray(d.questions)) {
+          qs = d.questions;
+          break;
         }
-      });
-  };
+
+        // 2) /details yanıtı (fallback)
+        if (u.endsWith("/details") && d?.success && Array.isArray(d.questions)) {
+          qs = d.questions;
+
+          // Başlık haritasını da güncelle (detaylardan gelirse)
+          const t = d?.survey?.title;
+          if (t) {
+            setSurveyTitleById((prev) => ({ ...prev, [surveyId]: t }));
+            // cache’e ek/yenile
+            const rest = (surveysCacheRef.current || []).filter(
+              (s) => String(s.id) !== String(surveyId)
+            );
+            surveysCacheRef.current = [...rest, { id: Number(surveyId), title: t }];
+          }
+          break;
+        }
+      } catch {
+        // bir sonrakini dene
+      }
+    }
+
+    if (!isMountedRef.current) return;
+
+    if (Array.isArray(qs)) {
+      // önbellekleri besle
+      indexQuestionsIntoCaches(qs);
+
+       // daha önce doğru bildiklerini ele
+      const filtered = qs.filter((q) => !correctAnswered.includes(q.id));
+
+      // ⬇⬇⬇ EKLE: filtre sonrası hiç soru kalmadıysa uyar ve listede kal
+      if (filtered.length === 0) {
+        setInfo("Bu kategoride çözecek yeni soru kalmadı.");
+        setQuestions([]);
+        setMode("list");
+        setLadderActive(false);
+        setDailyActive(false);
+        return; // erken çık
+      }
+
+
+     
+
+      shuffleInPlace(filtered);
+      setQuestions(filtered);
+      setCurrentIdx(0);
+      setMode("solve");
+      setLadderActive(false);
+      setDailyActive(false);
+    } else {
+      setQuestions([]);
+    }
+  })();
+};
+
 
   const fetchSurveyLeaderboard = async (surveyId) => {
     try {
@@ -1044,37 +1163,75 @@ const fetchDailyChampions = async () => {
 
   /* -------------------- Rastgele soru (serbest) -------------------- */
   const startRandom = async () => {
-    const res = await fetch(`${apiUrl}/api/user/approved-surveys`);
-    const data = await res.json();
+  // 1) Onaylı anketleri al + başlık haritasını güncelle
+  const res = await fetch(`${apiUrl}/api/user/approved-surveys`);
+  const data = await res.json();
 
-    if (data?.surveys) {
-      const map = {};
-      data.surveys.forEach((s) => (map[s.id] = s.title));
-      setSurveyTitleById((prev) => ({ ...prev, ...map }));
-      surveysCacheRef.current = data.surveys || [];
-    }
+  if (data?.surveys) {
+    const map = {};
+    data.surveys.forEach((s) => (map[s.id] = s.title));
+    setSurveyTitleById((prev) => ({ ...prev, ...map }));
+    surveysCacheRef.current = data.surveys || [];
+  }
 
-    let allQuestions = [];
-    for (const survey of data.surveys || []) {
-      const qRes = await fetch(`${apiUrl}/api/surveys/${survey.id}/questions`);
-      const qData = await qRes.json();
-      if (qData.success) {
-        allQuestions = allQuestions.concat(qData.questions);
+  // 2) Tüm kategoriler için önce /questions, olmazsa /details dene
+  let allQuestions = [];
+  for (const survey of data.surveys || []) {
+    const urls = [
+      `${apiUrl}/api/surveys/${survey.id}/questions`, // yeni uç
+      `${apiUrl}/api/surveys/${survey.id}/details`,   // eski uç (fallback)
+    ];
+
+    let got = null;
+    for (const u of urls) {
+      try {
+        const r = await fetch(u);
+        const d = await r.json();
+
+        // /questions -> { success, questions:[...] }
+        if (u.endsWith("/questions") && d?.success && Array.isArray(d.questions)) {
+          got = d.questions;
+          break;
+        }
+
+        // /details -> { success, survey:{title}, questions:[...] }
+        if (u.endsWith("/details") && d?.success && Array.isArray(d.questions)) {
+          got = d.questions;
+
+          // başlık haritasını /details'tan da güncelle
+          const t = d?.survey?.title;
+          if (t) {
+            setSurveyTitleById((prev) => ({ ...prev, [survey.id]: t }));
+            // cache’i senkron tut
+            const rest = (surveysCacheRef.current || []).filter(
+              (s) => String(s.id) !== String(survey.id)
+            );
+            surveysCacheRef.current = [...rest, { id: Number(survey.id), title: t }];
+          }
+          break;
+        }
+      } catch {
+        // bir sonrakini dene
       }
     }
-    indexQuestionsIntoCaches(allQuestions);
 
-    const filtered = allQuestions.filter(
-      (q) => !correctAnswered.includes(q.id)
-    );
-    shuffleInPlace(filtered);
+    if (Array.isArray(got) && got.length) {
+      allQuestions = allQuestions.concat(got);
+    }
+  }
 
-    setQuestions(filtered);
-    setCurrentIdx(0);
-    setMode("solve");
-    setLadderActive(false);
-    setDailyActive(false);
-  };
+  // 3) Önbellekleri besle + önce doğru bildiklerini ele + karıştır
+  indexQuestionsIntoCaches(allQuestions);
+  const filtered = allQuestions.filter((q) => !correctAnswered.includes(q.id));
+  shuffleInPlace(filtered);
+
+  // 4) Durumu başlat
+  setQuestions(filtered);
+  setCurrentIdx(0);
+  setMode("solve");
+  setLadderActive(false);
+  setDailyActive(false);
+};
 
   /* -------------------- Kademeli Yarış -------------------- */
   const loadLevelQuestions = async (level) => {
@@ -1310,12 +1467,16 @@ const fetchDailyChampions = async () => {
     setBooks((prev) => prev + Number(d.awarded_books));
   }
 
-// Seri bonus puanı geldiyse bildir
-const bonusPer = Number(dailyStatus?.today_bonus_per_correct ?? 0);
-const bonusPoints = d.is_correct === 1 ? bonusPer : 0;
-if (bonusPoints > 0) {
-  showToast(`Seri bonusu bugün: +${bonusPoints} puan 🎉`, "success");
+// Seri bonus (önce backend'in gerçek uyguladığı değeri kullan)
+const bonusApplied = Number(d?.bonus_points ?? 0);
+if (d.is_correct === 1 && bonusApplied > 0) {
+  showToast(`Seri bonusu: +${bonusApplied} puan 🎉`, "success");
+} else if (d.is_correct === 1) {
+  // Geri uyumluluk: status bilgisinden tahmini göster
+  const per = Number(dailyStatus?.today_bonus_per_correct ?? 0);
+  if (per > 0) showToast(`Seri bonusu: +${per} puan 🎉`, "success");
 }
+
 
 
 
@@ -1772,7 +1933,7 @@ if (bonusPoints > 0) {
             {/* Kategoriler */}
             <button
               className="w-full py-3 rounded-2xl font-bold bg-cyan-600 hover:bg-cyan-800 text-white shadow-lg active:scale-95 transition"
-              onClick={() => { fetchSurveys(); setMode("list"); }}
+              onClick={() => { setInfo(""); fetchSurveys(); setMode("list"); }}
               title="Onaylı Kategoriler"
             >
               <BookIcon className="w-5 h-5 mr-2 inline" /> Kategoride Yarış 
@@ -1931,6 +2092,13 @@ if (bonusPoints > 0) {
           <h2 className="text-xl font-extrabold text-cyan-700 text-center mb-3">
             Onaylı Kategoriler
           </h2>
+
+{info && (
+  <div className="mb-3 px-3 py-2 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
+    {info}
+  </div>
+)}
+
 
           {/* Puanlarım butonu (üstte) */}
           <button
@@ -2341,22 +2509,7 @@ if (bonusPoints > 0) {
           <div className="text-lg font-semibold mb-4">{q.question}</div>
           <div className="text-2xl font-bold text-cyan-600 mb-3">
             Puan: {q.point}
-            {typeof dailyStatus?.streak_current === "number" && (
-  <div className="mb-2">
-    <StatusBadge
-      text={`Seri: ${dailyStatus.streak_current} gün`}
-      color="purple"
-    />
-    {(dailyStatus?.today_bonus_per_correct ?? 0) > 0 && (
-      <StatusBadge
-        text={`Bugün Bonus: +${dailyStatus.today_bonus_per_correct} / Doğru`}
-        color="orange"
-        className="ml-2"
-      />
-    )}
-  </div>
-)}
-
+            
           </div>
 
           {/* === FEL0X: SOLVE ANSWER BUTTONS START === */}
@@ -2441,6 +2594,25 @@ if (bonusPoints > 0) {
           <div className="text-2xl font-bold text-cyan-600 mb-3">
             Puan: {q.point}
           </div>
+          
+          {typeof dailyStatus?.streak_current === "number" && (
+  <div className="mb-2">
+    <StatusBadge
+      text={`Seri: ${dailyStatus.streak_current} gün`}
+      color="emerald"
+      size="sm"
+    />
+    {(dailyStatus?.today_bonus_per_correct ?? 0) > 0 && (
+      <StatusBadge
+        text={`Bugün +${dailyStatus.today_bonus_per_correct}/doğru`}
+        color="orange"
+        size="sm"
+        className="ml-2"
+      />
+    )}
+  </div>
+)}
+
 
           {/* === FEL0X: DAILYSOLVE ANSWER BUTTONS START === */}
           <div className="flex flex-col gap-3 mb-4">
