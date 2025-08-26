@@ -2151,15 +2151,21 @@ if (bonusPoints > 0) {
   <div className="mt-1">
     <StatusBadge
       text={`Seri: ${dailyStatus.streak_current} gün`}
-      color="purple"
+      color="emerald"   // mor yerine tema uyumlu yeşil
+      size="md"         // bir tık daha büyük
+      className="!px-3 !py-1.5" // pedingi de büyüt
     />
     {(dailyStatus?.today_bonus_per_correct ?? 0) > 0 && (
-      <span className="ml-2 text-xs text-emerald-700 font-semibold">
-        Bugün her doğruya +{dailyStatus.today_bonus_per_correct} puan
-      </span>
+      <StatusBadge
+        text={`Bugün +${dailyStatus.today_bonus_per_correct}/doğru`}
+        color="orange"
+        size="sm"
+        className="ml-2"
+      />
     )}
   </div>
 )}
+
 
 
             {/* Üst kutular */}
