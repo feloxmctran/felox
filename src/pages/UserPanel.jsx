@@ -1311,15 +1311,12 @@ const fetchDailyChampions = async () => {
   }
 
 // Seri bonus puanı geldiyse bildir
-const bonusPoints = Number(
-  d?.bonus_points ??
-  d?.streak_bonus_points ??
-  (d?.bonus && d.bonus.points) ??
-  0
-);
+const bonusPer = Number(dailyStatus?.today_bonus_per_correct ?? 0);
+const bonusPoints = d.is_correct === 1 ? bonusPer : 0;
 if (bonusPoints > 0) {
-  showToast(`Seri bonusu: +${bonusPoints} puan 🎉`, "success");
+  showToast(`Seri bonusu bugün: +${bonusPoints} puan 🎉`, "success");
 }
+
 
 
   let msg = "";
@@ -2150,16 +2147,20 @@ if (bonusPoints > 0) {
             <div className="text-sm text-gray-600 mt-2">Günün Yarışmasında başarılar</div>
 
             {/* ← BUNUN HEMEN ALTINA EKLEYİN */}
-{typeof dailyStatus?.streak === "number" && (
+{typeof dailyStatus?.streak_current === "number" && (
   <div className="mt-1">
-    <StatusBadge text={`Seri: ${dailyStatus.streak} gün`} color="purple" />
-    {dailyStatus?.bonus_eligible ? (
+    <StatusBadge
+      text={`Seri: ${dailyStatus.streak_current} gün`}
+      color="purple"
+    />
+    {(dailyStatus?.today_bonus_per_correct ?? 0) > 0 && (
       <span className="ml-2 text-xs text-emerald-700 font-semibold">
-        Bugün tamamlarsan +1 puan
+        Bugün her doğruya +{dailyStatus.today_bonus_per_correct} puan
       </span>
-    ) : null}
+    )}
   </div>
 )}
+
 
             {/* Üst kutular */}
             <div className="w-full grid grid-cols-3 gap-2 mt-3">
@@ -2334,6 +2335,22 @@ if (bonusPoints > 0) {
           <div className="text-lg font-semibold mb-4">{q.question}</div>
           <div className="text-2xl font-bold text-cyan-600 mb-3">
             Puan: {q.point}
+            {typeof dailyStatus?.streak_current === "number" && (
+  <div className="mb-2">
+    <StatusBadge
+      text={`Seri: ${dailyStatus.streak_current} gün`}
+      color="purple"
+    />
+    {(dailyStatus?.today_bonus_per_correct ?? 0) > 0 && (
+      <StatusBadge
+        text={`Bugün Bonus: +${dailyStatus.today_bonus_per_correct} / Doğru`}
+        color="orange"
+        className="ml-2"
+      />
+    )}
+  </div>
+)}
+
           </div>
 
           {/* === FEL0X: SOLVE ANSWER BUTTONS START === */}
