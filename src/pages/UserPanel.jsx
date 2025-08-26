@@ -1049,17 +1049,32 @@ const fetchDailyChampions = async () => {
     if (!isMountedRef.current) return;
 
     if (Array.isArray(payload)) {
-      setSurveys(payload);
+  // 0 sorulu kategorileri gizle (çeşitli alan adlarına dayanıklı)
+  const onlyWithQuestions = payload.filter((s) => {
+    const count = Number(
+      s?.question_count ??
+      s?.questions_count ??
+      s?.total_questions ??
+      s?.questionCount ??
+      s?.count ??
+      0
+    );
+    const boolHas = s?.has_questions === true || s?.hasQuestions === true;
+    return count > 0 || boolHas; // en az bir tanesi true olsun
+  });
 
-      // title haritasını güncelle + cache’i doldur
-      const map = {};
-      payload.forEach((s) => (map[s.id] = s.title));
-      setSurveyTitleById((prev) => ({ ...prev, ...map }));
-      surveysCacheRef.current = payload;
-    } else {
-      setSurveys([]);
-      surveysCacheRef.current = [];
-    }
+  setSurveys(onlyWithQuestions);
+
+  // title haritasını güncelle + cache’i doldur (filtrelenmiş liste ile)
+  const map = {};
+  onlyWithQuestions.forEach((s) => (map[s.id] = s.title));
+  setSurveyTitleById((prev) => ({ ...prev, ...map }));
+  surveysCacheRef.current = onlyWithQuestions;
+} else {
+  setSurveys([]);
+  surveysCacheRef.current = [];
+}
+
   })();
 };
 
@@ -1159,45 +1174,79 @@ const fetchDailyChampions = async () => {
 
   /* -------------------- Rastgele soru (serbest) -------------------- */
  const startRandom = async () => {
-  // 1) Onaylı anketleri al + başlık haritasını güncelle
-  let data = { surveys: [] };
-  try {
-    const res = await fetch(`${apiUrl}/api/user/approved-surveys`);
-    data = await res.json();
-  } catch {}
-  const surveysList = Array.isArray(data?.surveys) ? data.surveys : [];
+  // 0) Hazırda onaylı kategori listesi varsa onu kullan; yoksa çek
+  let list =
+    (surveysCacheRef.current && surveysCacheRef.current.length
+      ? surveysCacheRef.current
+      : []);
 
-  if (surveysList.length === 0) {
-    window.alert("Henüz onaylanmış kategori bulunamadı.");
+  if (list.length === 0) {
+    try {
+      const r = await fetch(`${apiUrl}/api/user/approved-surveys`);
+      const d = await r.json();
+      if (d?.surveys) {
+        list = d.surveys;
+        const map = {};
+        list.forEach((s) => (map[s.id] = s.title));
+        setSurveyTitleById((prev) => ({ ...prev, ...map }));
+        surveysCacheRef.current = list;
+      }
+    } catch {}
+  }
+
+  // 1) 0 sorulu kategorileri baştan ele (çeşitli alan adlarına dayanıklı)
+  list = (list || []).filter((s) => {
+    const count = Number(
+      s?.question_count ??
+      s?.questions_count ??
+      s?.total_questions ??
+      s?.questionCount ??
+      s?.count ??
+      0
+    );
+    const boolHas = s?.has_questions === true || s?.hasQuestions === true;
+    return count > 0 || boolHas;
+  });
+
+  if (list.length === 0) {
+    // Hiç soru yoksa kibar fallback
+    setQuestions([]);
+    setCurrentIdx(0);
+    setMode("thankyou");
+    setLadderActive(false);
+    setDailyActive(false);
     return;
   }
 
-  const map = {};
-  surveysList.forEach((s) => (map[s.id] = s.title));
-  setSurveyTitleById((prev) => ({ ...prev, ...map }));
-  surveysCacheRef.current = surveysList;
+  // 2) Performans için rastgele N kategori seç (N=6). İstersen 8-10 yapabilirsin.
+  const pickRandom = (arr, n) => {
+    const cp = [...arr];
+    for (let i = cp.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [cp[i], cp[j]] = [cp[j], cp[i]];
+    }
+    return cp.slice(0, n);
+  };
+  const chosen = pickRandom(list, Math.min(16, list.length));
 
-  // 2) Tüm kategoriler için önce /questions, olmazsa /details dene
-  let allQuestions = [];
-  for (const survey of surveysList) {
+  // 3) Tek kategori için hızlı getirici (questions -> details fallback)
+  const fetchSurveyQuestions = async (survey) => {
     const urls = [
       `${apiUrl}/api/surveys/${survey.id}/questions`,
       `${apiUrl}/api/surveys/${survey.id}/details`,
     ];
-
-    let got = null;
     for (const u of urls) {
       try {
         const r = await fetch(u);
         const d = await r.json();
 
+        // /questions cevabı
         if (u.endsWith("/questions") && d?.success && Array.isArray(d.questions)) {
-          got = d.questions;
-          break;
+          return d.questions;
         }
-        if (u.endsWith("/details") && d?.success && Array.isArray(d.questions)) {
-          got = d.questions;
 
+        // /details cevabı + başlık haritası güncelle
+        if (u.endsWith("/details") && d?.success && Array.isArray(d.questions)) {
           const t = d?.survey?.title;
           if (t) {
             setSurveyTitleById((prev) => ({ ...prev, [survey.id]: t }));
@@ -1206,42 +1255,31 @@ const fetchDailyChampions = async () => {
             );
             surveysCacheRef.current = [...rest, { id: Number(survey.id), title: t }];
           }
-          break;
+          return d.questions;
         }
       } catch {
         // bir sonrakini dene
       }
     }
+    return [];
+  };
 
-    if (Array.isArray(got) && got.length) {
-      allQuestions = allQuestions.concat(got);
-    }
-  }
+  // 4) Kategorileri PARALEL indir
+  const results = await Promise.all(chosen.map(fetchSurveyQuestions));
+  const allQuestions = results.flat().filter(Boolean);
 
-  // 3) Soru yoksa kullanıcıya mesaj ver ve çık
-  if (allQuestions.length === 0) {
-    window.alert("Rastgele modda çözecek soru bulunamadı.");
-    return;
-  }
-
-  // 4) Önbellekleri besle + daha önce doğru bildiklerini ele + karıştır
+  // 5) Önbellek + doğru bildiklerini ele + karıştır + başlat
   indexQuestionsIntoCaches(allQuestions);
-  const filtered = allQuestions.filter((q) => !correctAnswered.includes(q.id));
+  const filteredQs = allQuestions.filter((q) => !correctAnswered.includes(q.id));
+  shuffleInPlace(filteredQs);
 
-  if (filtered.length === 0) {
-    window.alert("Rastgele modda çözecek yeni soru kalmadı.");
-    return;
-  }
-
-  shuffleInPlace(filtered);
-
-  // 5) Durumu başlat
-  setQuestions(filtered);
+  setQuestions(filteredQs);
   setCurrentIdx(0);
   setMode("solve");
   setLadderActive(false);
   setDailyActive(false);
 };
+
 
 
   /* -------------------- Kademeli Yarış -------------------- */
