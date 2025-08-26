@@ -1078,21 +1078,20 @@ const fetchDailyChampions = async () => {
         const res = await fetch(u);
         const d = await res.json();
 
-        // 1) /questions yanıtı
+        // /questions tipik cevap
         if (u.endsWith("/questions") && d?.success && Array.isArray(d.questions)) {
           qs = d.questions;
           break;
         }
 
-        // 2) /details yanıtı (fallback)
+        // /details fallback (bazı backend'lerde farklı alan adları olabiliyor)
         if (u.endsWith("/details") && d?.success && Array.isArray(d.questions)) {
           qs = d.questions;
 
-          // Başlık haritasını da güncelle (detaylardan gelirse)
+          // başlık haritasını /details'tan güncelle (varsa)
           const t = d?.survey?.title;
           if (t) {
             setSurveyTitleById((prev) => ({ ...prev, [surveyId]: t }));
-            // cache’e ek/yenile
             const rest = (surveysCacheRef.current || []).filter(
               (s) => String(s.id) !== String(surveyId)
             );
@@ -1108,25 +1107,20 @@ const fetchDailyChampions = async () => {
     if (!isMountedRef.current) return;
 
     if (Array.isArray(qs)) {
-      // önbellekleri besle
+      // 1) cache
       indexQuestionsIntoCaches(qs);
 
-       // daha önce doğru bildiklerini ele
+      // 2) önce filtered'ı oluştur
       const filtered = qs.filter((q) => !correctAnswered.includes(q.id));
 
-      // ⬇⬇⬇ EKLE: filtre sonrası hiç soru kalmadıysa uyar ve listede kal
+      // 3) hiç yeni soru yoksa kullanıcıya net mesaj göster ve listede kal
       if (filtered.length === 0) {
-        setInfo("Bu kategoride çözecek yeni soru kalmadı.");
-        setQuestions([]);
-        setMode("list");
-        setLadderActive(false);
-        setDailyActive(false);
-        return; // erken çık
+        window.alert("Bu kategoride çözecek yeni soru kalmadı.");
+        // listede kal, herhangi bir moda geçmeyelim
+        return;
       }
 
-
-     
-
+      // 4) sonra kullan
       shuffleInPlace(filtered);
       setQuestions(filtered);
       setCurrentIdx(0);
@@ -1134,10 +1128,12 @@ const fetchDailyChampions = async () => {
       setLadderActive(false);
       setDailyActive(false);
     } else {
-      setQuestions([]);
+      // endpoint hiç soru döndürmediyse kullanıcıyı bilgilendir
+      window.alert("Bu kategoride soru bulunamadı (geçici bir durum olabilir).");
     }
   })();
 };
+
 
 
   const fetchSurveyLeaderboard = async (surveyId) => {
@@ -1162,24 +1158,31 @@ const fetchDailyChampions = async () => {
   };
 
   /* -------------------- Rastgele soru (serbest) -------------------- */
-  const startRandom = async () => {
+ const startRandom = async () => {
   // 1) Onaylı anketleri al + başlık haritasını güncelle
-  const res = await fetch(`${apiUrl}/api/user/approved-surveys`);
-  const data = await res.json();
+  let data = { surveys: [] };
+  try {
+    const res = await fetch(`${apiUrl}/api/user/approved-surveys`);
+    data = await res.json();
+  } catch {}
+  const surveysList = Array.isArray(data?.surveys) ? data.surveys : [];
 
-  if (data?.surveys) {
-    const map = {};
-    data.surveys.forEach((s) => (map[s.id] = s.title));
-    setSurveyTitleById((prev) => ({ ...prev, ...map }));
-    surveysCacheRef.current = data.surveys || [];
+  if (surveysList.length === 0) {
+    window.alert("Henüz onaylanmış kategori bulunamadı.");
+    return;
   }
+
+  const map = {};
+  surveysList.forEach((s) => (map[s.id] = s.title));
+  setSurveyTitleById((prev) => ({ ...prev, ...map }));
+  surveysCacheRef.current = surveysList;
 
   // 2) Tüm kategoriler için önce /questions, olmazsa /details dene
   let allQuestions = [];
-  for (const survey of data.surveys || []) {
+  for (const survey of surveysList) {
     const urls = [
-      `${apiUrl}/api/surveys/${survey.id}/questions`, // yeni uç
-      `${apiUrl}/api/surveys/${survey.id}/details`,   // eski uç (fallback)
+      `${apiUrl}/api/surveys/${survey.id}/questions`,
+      `${apiUrl}/api/surveys/${survey.id}/details`,
     ];
 
     let got = null;
@@ -1188,21 +1191,16 @@ const fetchDailyChampions = async () => {
         const r = await fetch(u);
         const d = await r.json();
 
-        // /questions -> { success, questions:[...] }
         if (u.endsWith("/questions") && d?.success && Array.isArray(d.questions)) {
           got = d.questions;
           break;
         }
-
-        // /details -> { success, survey:{title}, questions:[...] }
         if (u.endsWith("/details") && d?.success && Array.isArray(d.questions)) {
           got = d.questions;
 
-          // başlık haritasını /details'tan da güncelle
           const t = d?.survey?.title;
           if (t) {
             setSurveyTitleById((prev) => ({ ...prev, [survey.id]: t }));
-            // cache’i senkron tut
             const rest = (surveysCacheRef.current || []).filter(
               (s) => String(s.id) !== String(survey.id)
             );
@@ -1220,18 +1218,31 @@ const fetchDailyChampions = async () => {
     }
   }
 
-  // 3) Önbellekleri besle + önce doğru bildiklerini ele + karıştır
+  // 3) Soru yoksa kullanıcıya mesaj ver ve çık
+  if (allQuestions.length === 0) {
+    window.alert("Rastgele modda çözecek soru bulunamadı.");
+    return;
+  }
+
+  // 4) Önbellekleri besle + daha önce doğru bildiklerini ele + karıştır
   indexQuestionsIntoCaches(allQuestions);
   const filtered = allQuestions.filter((q) => !correctAnswered.includes(q.id));
+
+  if (filtered.length === 0) {
+    window.alert("Rastgele modda çözecek yeni soru kalmadı.");
+    return;
+  }
+
   shuffleInPlace(filtered);
 
-  // 4) Durumu başlat
+  // 5) Durumu başlat
   setQuestions(filtered);
   setCurrentIdx(0);
   setMode("solve");
   setLadderActive(false);
   setDailyActive(false);
 };
+
 
   /* -------------------- Kademeli Yarış -------------------- */
   const loadLevelQuestions = async (level) => {
