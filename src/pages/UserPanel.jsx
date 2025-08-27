@@ -1286,9 +1286,10 @@ const fetchDailyChampions = async () => {
   const loadLevelQuestions = async (level) => {
     setLoadingLevelQuestions(true);
     try {
-      const r = await fetch(
-        `${apiUrl}/api/user/${user.id}/kademeli-questions?point=${level}`
-      );
+     const r = await fetch(
+  `${apiUrl}/api/user/${user.id}/kademeli-questions?point=${level}&limit=20`
+);
+
       const d = await r.json();
       const all = Array.isArray(d?.questions) ? d.questions : [];
       indexQuestionsIntoCaches(all);
