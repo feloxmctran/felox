@@ -618,6 +618,8 @@ const BookCountPill = ({ count = 0, showLabel = false }) => {
   );
 };
 
+
+
   // === FEL0X: BOOKS STATE END ===
 
   // Kademeli Yarış
@@ -627,6 +629,10 @@ const BookCountPill = ({ count = 0, showLabel = false }) => {
   const [ladderCorrect, setLadderCorrect] = useState(0);
   const [showLevelUpPrompt, setShowLevelUpPrompt] = useState(false);
   const [loadingLevelQuestions, setLoadingLevelQuestions] = useState(false);
+  
+  // Bu seviyedeki toplam (tüm zamanlar) deneme/doğru
+  const [ladderTotals, setLadderTotals] = useState({ attempted: 0, correct: 0 });
+
 
   // TEŞEKKÜRLER ekranı için alıntı
   const [quote, setQuote] = useState(null);
@@ -909,6 +915,24 @@ fetchSpeedTier();
     if (mode === "thankyou") fetchRandomQuote();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
+
+  const refreshLadderTotals = useCallback(async () => {
+  if (!user?.id || !ladderActive) return;
+  try {
+    const r = await fetch(`${apiUrl}/api/user/${user.id}/kademeli-progress?point=${ladderLevel}`);
+    const d = await r.json();
+    if (d?.success) {
+      setLadderTotals({ attempted: d.attempted || 0, correct: d.correct || 0 });
+    }
+  } catch {}
+}, [user?.id, ladderActive, ladderLevel]);
+
+// Kademeli mod açıkken; seviye/indeks değiştikçe toplam özeti tazele
+useEffect(() => {
+  if (!ladderActive) return;
+  refreshLadderTotals();
+}, [ladderActive, ladderLevel, currentIdx, refreshLadderTotals]);
+
 
   // === IMPDAY: auto fetch (use day_key) START ===
   useEffect(() => {
@@ -1333,6 +1357,21 @@ const fetchDailyChampions = async () => {
     }
   };
 
+// Hemen şimdi seviye atlayabiliyor muyum? (parti bitmeden kontrol)
+const peekLadderProgress = useCallback(async () => {
+  if (!user?.id) return null;
+  try {
+    const r = await fetch(`${apiUrl}/api/user/${user.id}/kademeli-next?point=${ladderLevel}`);
+    const d = await r.json();
+    if (d?.success && d.can_level_up) {
+      return d.status === "genius" ? "genius" : "ok";
+    }
+  } catch {}
+  return null;
+}, [user?.id, ladderLevel]);
+
+
+
   /* -------------------- Günün Yarışması: durum & puan -------------------- */
   async function fetchMyDailyPoints(dayKey) {
     if (!user || !dayKey) return;
@@ -1625,7 +1664,7 @@ if (d.is_correct === 1 && bonusApplied > 0) {
           }
 
           if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
-          feedbackTimeoutRef.current = setTimeout(async () => {
+feedbackTimeoutRef.current = setTimeout(async () => {
   if (!isMountedRef.current) return;
   setFeedbackActive(false);
   setShowStars(false);
@@ -1634,11 +1673,24 @@ if (d.is_correct === 1 && bonusApplied > 0) {
     setCorrectAnswered((prev) => [...prev, q.id]);
   }
 
-  // ←←← BURASI YENİ: İlerle / seviye kontrolü / bitir
+  // Kademeli: %80 şartı yakalandıysa parti bitmeden prompt göster
+  if (ladderActive) {
+    const ready = await peekLadderProgress();
+    if (ready === "genius") {
+      setMode("genius");
+      setLadderActive(false);
+      return;
+    }
+    if (ready === "ok") {
+      setShowLevelUpPrompt(true);
+      return;
+    }
+  }
+
   if (currentIdx < questions.length - 1) {
     setCurrentIdx((prev) => prev + 1);
   } else if (ladderActive) {
-    await checkLadderProgress();        // ← artık kullanılıyor -> uyarı biter
+    await checkLadderProgress();
   } else {
     setMode("thankyou");
   }
@@ -1797,6 +1849,15 @@ if (d.is_correct === 1 && bonusApplied > 0) {
     return i === -1 ? null : i + 1;
   }, [dailyLeaderboard, user?.id]);
   // === FEL0X: LOCALE & DAILY RANK MEMO END ===
+
+// Kademeli toplam başarı yüzdesi (tüm zamanlar, o seviyede)
+const ladderTotalRate = useMemo(() => {
+  const a = Number(ladderTotals?.attempted) || 0;
+  const c = Number(ladderTotals?.correct) || 0;
+  return a > 0 ? Math.round((c * 100) / a) : 0;
+}, [ladderTotals]);
+
+
 
   useEffect(() => {
   if (!user?.id) return;
@@ -2552,10 +2613,23 @@ if (d.is_correct === 1 && bonusApplied > 0) {
             Soru {currentIdx + 1} / {questions.length}
           </h2>
           <div className="text-sm text-gray-600 mb-1">
-            {ladderActive
-              ? `Kademeli Yarış • Seviye ${ladderLevel} • Deneme ${ladderAttempts} • Doğru ${ladderCorrect}`
-              : "Standart Mod"}
-          </div>
+  {ladderActive ? (
+    <>
+      {`Kademeli Yarış • Seviye ${ladderLevel} • Deneme ${ladderAttempts} • Doğru ${ladderCorrect}`}
+      <div className="mt-1">
+        <StatusBadge
+          text={`Toplam (bu seviyede): ${ladderTotals.attempted} deneme • ${ladderTotals.correct} doğru • %${ladderTotalRate}`}
+          color="blue"
+          size="sm"
+          variant="ghost"
+        />
+      </div>
+    </>
+  ) : (
+    "Standart Mod"
+  )}
+</div>
+
           <div className="text-4xl font-mono text-emerald-700 mb-2 select-none">
             {timeLeft}
           </div>
