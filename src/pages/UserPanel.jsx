@@ -1526,6 +1526,17 @@ if (d.is_correct === 1 && bonusApplied > 0) {
   if (per > 0) showToast(`Seri bonusu: +${per} puan 🎉`, "success");
 }
 
+      // (YENİ) Puanı ekranda anında güncelle
+      const basePoint = Number(q.point) || 0;
+      let delta = 0;
+      if (cevap !== "bilmem") {
+        // doğru: +point + bonus; yanlış: -point; bilmem: 0
+        delta = d.is_correct === 1
+          ? basePoint + Number(d?.bonus_points || 0)
+          : -basePoint;
+      }
+      setDailyPoints((prev) => prev + delta);
+
 
 
 
@@ -2686,6 +2697,12 @@ if (d.is_correct === 1 && bonusApplied > 0) {
             >
               Bilmem
             </button>
+
+  {/* Günlük toplam puanın (ANLIK) */}
+  <div className="text-sm font-bold text-emerald-700 text-center -mt-1">
+    Bugünkü toplam puanın: {nf.format(dailyPoints)}
+  </div>
+
 
             {/* Kitap İpucu */}
             <button
