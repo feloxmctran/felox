@@ -629,7 +629,23 @@ const BookCountPill = ({ count = 0, showLabel = false }) => {
   const [ladderCorrect, setLadderCorrect] = useState(0);
   const [showLevelUpPrompt, setShowLevelUpPrompt] = useState(false);
   const [loadingLevelQuestions, setLoadingLevelQuestions] = useState(false);
-  
+
+  // Rekor (erişilen en yüksek) seviye
+const [ladderBest, setLadderBest] = useState(0);
+
+// En iyi seviyeyi backend'den oku
+const fetchLadderBest = useCallback(async () => {
+  if (!user?.id) return;
+  try {
+    const r = await fetch(`${apiUrl}/api/user/${user.id}/ladder-best-level`);
+    const d = await r.json();
+    if (d?.success && Number.isFinite(Number(d.best_level))) {
+      setLadderBest(Number(d.best_level));
+    }
+  } catch {}
+}, [user?.id]);
+
+
   // Bu seviyedeki toplam (tüm zamanlar) deneme/doğru
   const [ladderTotals, setLadderTotals] = useState({ attempted: 0, correct: 0 });
 
@@ -908,6 +924,9 @@ fetchSpeedTier();
     // Günün Yarışması
     fetchDailyStatus();
     // eslint-disable-next-line
+
+    // Rekor seviye
+fetchLadderBest();
   }, [user]);
 
   // thankyou moduna her girişte yeni söz çek
@@ -1674,18 +1693,28 @@ feedbackTimeoutRef.current = setTimeout(async () => {
   }
 
   // Kademeli: %80 şartı yakalandıysa parti bitmeden prompt göster
-  if (ladderActive) {
-    const ready = await peekLadderProgress();
-    if (ready === "genius") {
-      setMode("genius");
-      setLadderActive(false);
-      return;
-    }
-    if (ready === "ok") {
-      setShowLevelUpPrompt(true);
-      return;
-    }
+if (ladderActive) {
+  // Toplam (bu seviyede) sayacını hemen tazele
+  await refreshLadderTotals();
+
+  const ready = await peekLadderProgress();
+   if (ready === "genius") {
+   await fetchLadderBest(); // sunucu zaten 10'a çekti
+
+    setMode("genius");
+    setLadderActive(false);
+    return;
   }
+  if (ready === "ok") {
+   await fetchLadderBest(); // sunucu best'i bir üst seviyeye aldı
+
+    setShowLevelUpPrompt(true);
+    setMode("panel");  // modal panelde render edildiği için panele geç
+    return;
+  }
+}
+
+
 
   if (currentIdx < questions.length - 1) {
     setCurrentIdx((prev) => prev + 1);
@@ -2052,6 +2081,11 @@ const ladderTotalRate = useMemo(() => {
 
             </button>
 
+            <div className="text-center text-xs text-gray-600 -mt-2">
+  Rekor seviye: <b className="text-emerald-700">{ladderBest}</b>
+</div>
+
+
             {/* Kategoriler */}
             <button
               className="w-full py-3 rounded-2xl font-bold bg-cyan-600 hover:bg-cyan-800 text-white shadow-lg active:scale-95 transition"
@@ -2183,6 +2217,7 @@ const ladderTotalRate = useMemo(() => {
                       setLadderLevel(next);
                       setLadderAttempts(0);
                       setLadderCorrect(0);
+                      await fetchLadderBest(); // ekranda rekor seviye hemen tazelensin
                       await loadLevelQuestions(next);
                     }}
                   >
@@ -2616,6 +2651,15 @@ const ladderTotalRate = useMemo(() => {
   {ladderActive ? (
     <>
       {`Kademeli Yarış • Seviye ${ladderLevel} • Deneme ${ladderAttempts} • Doğru ${ladderCorrect}`}
+      <div className="mt-1">
+  <StatusBadge
+    text={`Rekor seviye: ${ladderBest}`}
+    color="emerald"
+    size="sm"
+    variant="ghost"
+  />
+</div>
+
       <div className="mt-1">
         <StatusBadge
           text={`Toplam (bu seviyede): ${ladderTotals.attempted} deneme • ${ladderTotals.correct} doğru • %${ladderTotalRate}`}
