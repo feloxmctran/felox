@@ -1348,11 +1348,34 @@ const fetchDailyChampions = async () => {
   };
 
   const startLadder = async () => {
-    setLadderLevel(1);
-    setLadderAttempts(0);
-    setLadderCorrect(0);
-    await loadLevelQuestions(1);
-  };
+  const first = 1;
+
+  // 1) Backend’de bu seviye için yeni oturum başlat
+  try {
+    const r = await fetch(`${apiUrl}/api/ladder/session/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: user.id, level: first }),
+    });
+    const d = await r.json();
+    if (!d?.success) {
+      window.alert(d?.error || "Kademeli oturum başlatılamadı.");
+      return;
+    }
+  } catch {
+    window.alert("Kademeli oturum başlatılamadı (bağlantı hatası).");
+    return;
+  }
+
+  // 2) Lokal sayaçları sıfırla ve soruları yükle
+  setLadderLevel(first);
+  setLadderAttempts(0);
+  setLadderCorrect(0);
+  await loadLevelQuestions(first);
+};
+
+
+
 
   const checkLadderProgress = async () => {
     try {
@@ -1879,12 +1902,11 @@ if (ladderActive) {
   }, [dailyLeaderboard, user?.id]);
   // === FEL0X: LOCALE & DAILY RANK MEMO END ===
 
-// Kademeli toplam başarı yüzdesi (tüm zamanlar, o seviyede)
-const ladderTotalRate = useMemo(() => {
-  const a = Number(ladderTotals?.attempted) || 0;
-  const c = Number(ladderTotals?.correct) || 0;
-  return a > 0 ? Math.round((c * 100) / a) : 0;
-}, [ladderTotals]);
+// Kademeli oturum başarı yüzdesi (yalnızca bu seans, bu seviye için)
+const ladderSessionRate = useMemo(() => {
+  return ladderAttempts > 0 ? Math.round((ladderCorrect * 100) / ladderAttempts) : 0;
+}, [ladderAttempts, ladderCorrect]);
+
 
 
 
@@ -2210,19 +2232,39 @@ const ladderTotalRate = useMemo(() => {
                 </div>
                 <div className="flex gap-3 justify-center">
                   <button
-                    className="px-4 py-2 rounded-2xl bg-emerald-600 text-white hover:bg-emerald-800"
-                    onClick={async () => {
-                      setShowLevelUpPrompt(false);
-                      const next = Math.min(10, ladderLevel + 1);
-                      setLadderLevel(next);
-                      setLadderAttempts(0);
-                      setLadderCorrect(0);
-                      await fetchLadderBest(); // ekranda rekor seviye hemen tazelensin
-                      await loadLevelQuestions(next);
-                    }}
-                  >
-                    Evet, zorlaştır
-                  </button>
+  className="px-4 py-2 rounded-2xl bg-emerald-600 text-white hover:bg-emerald-800"
+  onClick={async () => {
+    const next = Math.min(10, ladderLevel + 1);
+
+    // 1) Backend’de yeni seviye için oturum başlat
+    try {
+      const r = await fetch(`${apiUrl}/api/ladder/session/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: user.id, level: next }),
+      });
+      const d = await r.json();
+      if (!d?.success) {
+        window.alert(d?.error || "Kademeli oturum başlatılamadı.");
+        return;
+      }
+    } catch {
+      window.alert("Kademeli oturum başlatılamadı (bağlantı hatası).");
+      return;
+    }
+
+    // 2) Lokal sayaçları sıfırla ve soruları yükle
+    setShowLevelUpPrompt(false);
+    setLadderLevel(next);
+    setLadderAttempts(0);
+    setLadderCorrect(0);
+    await fetchLadderBest();
+    await loadLevelQuestions(next);
+  }}
+>
+  Evet, zorlaştır
+</button>
+
                   <button
                     className="px-4 py-2 rounded-2xl bg-gray-200 text-gray-700 hover:bg-gray-300"
                     onClick={() => {
@@ -2661,13 +2703,14 @@ const ladderTotalRate = useMemo(() => {
 </div>
 
       <div className="mt-1">
-        <StatusBadge
-          text={`Toplam (bu seviyede): ${ladderTotals.attempted} deneme • ${ladderTotals.correct} doğru • %${ladderTotalRate}`}
-          color="blue"
-          size="sm"
-          variant="ghost"
-        />
-      </div>
+  <StatusBadge
+    text={`Bu oturum: ${ladderAttempts} deneme • ${ladderCorrect} doğru • %${ladderSessionRate}`}
+    color="blue"
+    size="sm"
+    variant="ghost"
+  />
+</div>
+
     </>
   ) : (
     "Standart Mod"
