@@ -2097,28 +2097,52 @@ const ladderSessionRate = useMemo(() => {
   <div className="mt-1">
     <div className="flex items-center gap-2 flex-wrap justify-start text-left">
       <StatusBadge
-        text={`Ort. hızın: ${Number(speedTier?.avg_spent_seconds || 0).toFixed(1)} sn`}
-        color={tierMeta(speedTier.tier).color}
+  text={`Hızın: ${
+    Number.isFinite(Number(speedTier?.avg_spent_seconds))
+      ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+          .format(Number(speedTier.avg_spent_seconds))
+      : '—'
+  } sn`}
+  color={tierMeta(speedTier.tier).color}
+  size="sm"
+  variant="ghost"
+  className="!text-cyan-700 !px-0 !py-0 !rounded-none"
+/>
+
+
+      <StatusBadge
+        text={`Kitap ipucun ${Number(books) || 0}`}
+        color="orange"
         size="sm"
         variant="ghost"
         className="!text-cyan-700"
       />
     </div>
-    <div className="mt-1">
-      <BookCountPill count={books} />
-    </div>
   </div>
 ) : (
   <div className="mt-1">
     <div className="flex items-center gap-2 flex-wrap justify-start text-left">
-      <StatusBadge text="Hesaplanıyor…" color="gray" size="sm" variant="ghost" className="!text-cyan-700" />
-      <StatusBadge text="Hızın hesaplanıyor…" color="gray" size="sm" variant="ghost" className="!text-cyan-700" />
-    </div>
-    <div className="mt-1">
-      <BookCountPill count={books} />
+      <StatusBadge text="Hesaplanıyor…" color="gray" size="sm" variant="ghost" className="!text-cyan-700 !px-0 !py-0 !rounded-none" />
+<StatusBadge text="Hızın hesaplanıyor…" color="gray" size="sm" variant="ghost" className="!text-cyan-700 !px-0 !py-0 !rounded-none" />
+      <StatusBadge
+        text={`Kitap ipucun ${Number(books) || 0}`}
+        color="orange"
+        size="sm"
+        variant="ghost"
+        className="!text-cyan-700"
+      />
     </div>
   </div>
 )}
+
+
+{typeof dailyStatus?.streak_current === "number" && dailyStatus.streak_current > 0 && (
+  <div className="mt-1 text-[13px] text-cyan-700 font-semibold">
+    {dailyStatus.streak_current} günlük serin var
+    {Number(dailyStatus?.today_bonus_per_correct) > 0 ? ` +${Number(dailyStatus.today_bonus_per_correct)}` : ""}
+  </div>
+)}
+
 
 
 
@@ -2522,28 +2546,44 @@ const ladderSessionRate = useMemo(() => {
   <div className="mt-1">
     <div className="flex items-center gap-2 flex-wrap justify-start text-left">
       <StatusBadge
-        text={`Ort. hızın: ${Number(speedTier?.avg_spent_seconds || 0).toFixed(1)} sn`}
-        color={tierMeta(speedTier.tier).color}
+  text={`Hızın: ${
+    Number.isFinite(Number(speedTier?.avg_spent_seconds))
+      ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+          .format(Number(speedTier.avg_spent_seconds))
+      : '—'
+  } sn`}
+  color={tierMeta(speedTier.tier).color}
+  size="sm"
+  variant="ghost"
+  className="!text-cyan-700 !px-0 !py-0 !rounded-none"
+/>
+
+
+      <StatusBadge
+        text={`Kitap ipucun ${Number(books) || 0}`}
+        color="orange"
         size="sm"
         variant="ghost"
         className="!text-cyan-700"
       />
     </div>
-    <div className="mt-1">
-      <BookCountPill count={books} />
-    </div>
   </div>
 ) : (
   <div className="mt-1">
     <div className="flex items-center gap-2 flex-wrap justify-start text-left">
-      <StatusBadge text="Hesaplanıyor…" color="gray" size="sm" variant="ghost" className="!text-cyan-700" />
-      <StatusBadge text="Hızın hesaplanıyor…" color="gray" size="sm" variant="ghost" className="!text-cyan-700" />
-    </div>
-    <div className="mt-1">
-      <BookCountPill count={books} />
+      <StatusBadge text="Hesaplanıyor…" color="gray" size="sm" variant="ghost" className="!text-cyan-700 !px-0 !py-0 !rounded-none" />
+<StatusBadge text="Hızın hesaplanıyor…" color="gray" size="sm" variant="ghost" className="!text-cyan-700 !px-0 !py-0 !rounded-none" />
+      <StatusBadge
+        text={`Kitap ipucun ${Number(books) || 0}`}
+        color="orange"
+        size="sm"
+        variant="ghost"
+        className="!text-cyan-700"
+      />
     </div>
   </div>
 )}
+
 
 
 
