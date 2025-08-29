@@ -493,6 +493,9 @@ export default function UserPanel() {
   const [feedbackActive, setFeedbackActive] = useState(false);
   const [showStars, setShowStars] = useState(false);
   const [starsCount, setStarsCount] = useState(1);
+  // Puan artışı mini animasyonu
+const [scoreFloat, setScoreFloat] = useState(null); // number | null
+
 
   
 
@@ -647,7 +650,8 @@ const fetchLadderBest = useCallback(async () => {
 
 
   // Bu seviyedeki toplam (tüm zamanlar) deneme/doğru
-  const [ladderTotals, setLadderTotals] = useState({ attempted: 0, correct: 0 });
+  const [, setLadderTotals] = useState({ attempted: 0, correct: 0 });
+
 
 
   // TEŞEKKÜRLER ekranı için alıntı
@@ -938,7 +942,10 @@ fetchLadderBest();
   const refreshLadderTotals = useCallback(async () => {
   if (!user?.id || !ladderActive) return;
   try {
-    const r = await fetch(`${apiUrl}/api/user/${user.id}/kademeli-progress?point=${ladderLevel}`);
+    const r = await fetch(
+  `${apiUrl}/api/user/${user.id}/kademeli-progress?point=${ladderLevel}&level=${ladderLevel}`
+);
+
     const d = await r.json();
     if (d?.success) {
       setLadderTotals({ attempted: d.attempted || 0, correct: d.correct || 0 });
@@ -1330,7 +1337,8 @@ const fetchDailyChampions = async () => {
     setLoadingLevelQuestions(true);
     try {
      const r = await fetch(
-  `${apiUrl}/api/user/${user.id}/kademeli-questions?point=${level}&limit=20`
+  `${apiUrl}/api/user/${user.id}/kademeli-questions?point=${level}&level=${level}&limit=20`
+
 );
 
       const d = await r.json();
@@ -1380,8 +1388,8 @@ const fetchDailyChampions = async () => {
   const checkLadderProgress = async () => {
     try {
       const r = await fetch(
-        `${apiUrl}/api/user/${user.id}/kademeli-next?point=${ladderLevel}`
-      );
+  `${apiUrl}/api/user/${user.id}/kademeli-next?point=${ladderLevel}&level=${ladderLevel}`
+);
       const d = await r.json();
       if (!isMountedRef.current) return;
       if (d?.success && d.can_level_up) {
@@ -1403,7 +1411,10 @@ const fetchDailyChampions = async () => {
 const peekLadderProgress = useCallback(async () => {
   if (!user?.id) return null;
   try {
-    const r = await fetch(`${apiUrl}/api/user/${user.id}/kademeli-next?point=${ladderLevel}`);
+    const r = await fetch(
+  `${apiUrl}/api/user/${user.id}/kademeli-next?point=${ladderLevel}&level=${ladderLevel}`
+);
+
     const d = await r.json();
     if (d?.success && d.can_level_up) {
       return d.status === "genius" ? "genius" : "ok";
@@ -1537,6 +1548,15 @@ const peekLadderProgress = useCallback(async () => {
   }, [timeLeft, timerActive]);
   // === FEL0X: TIMER BLOCK END ===
 
+  // Son 5 saniyede kısa titreşim (destekleyen cihazlarda)
+useEffect(() => {
+  if (!timerActive) return;
+  if (timeLeft > 0 && timeLeft <= 5) {
+    try { navigator?.vibrate?.(50); } catch {}
+  }
+}, [timeLeft, timerActive]);
+
+
   /* -------------------- Cevap işle -------------------- */
   // === FEL0X: ANSWER HANDLERS START ===
   const getSuccessMsg = (puan) => {
@@ -1619,6 +1639,10 @@ if (d.is_correct === 1 && bonusApplied > 0) {
       }
       setDailyPoints((prev) => prev + delta);
 
+if (delta !== 0) {
+  setScoreFloat(delta);
+  setTimeout(() => setScoreFloat(null), 1000);
+}
 
 
 
@@ -1670,17 +1694,25 @@ if (d.is_correct === 1 && bonusApplied > 0) {
     }
 
     // --------- NORMAL / KADEMELİ ---------
-    fetch(`${apiUrl}/api/answers`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_id: user.id,
-        question_id: q.id,
-        answer: cevap,
-        time_left_seconds: timeLeft,
-        max_time_seconds: 24,
-      }),
-    })
+// --------- NORMAL / KADEMELİ ---------
+const endpoint = ladderActive
+  ? `${apiUrl}/api/ladder/answer`
+  : `${apiUrl}/api/answers`;
+
+fetch(endpoint, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    user_id: user.id,
+    question_id: q.id,
+    answer: cevap,
+    time_left_seconds: timeLeft,
+    max_time_seconds: 24,
+    // ⬇️ EKLEDİK: kademeli moddaysak seviyeyi de gönder
+    ...(ladderActive ? { point: ladderLevel, level: ladderLevel } : {}),
+  }),
+})
+
       .then((res) => res.json())
       .then((d) => {
         if (d.success) {
@@ -1698,12 +1730,29 @@ if (d.is_correct === 1 && bonusApplied > 0) {
           setShowStars(stars && d.is_correct === 1);
           setFeedbackActive(true);
           refreshUserStats(); // hız/puan anında tazelensin
+          // UI: anlık puan pop (normal/kademeli)
+let deltaPop = 0;
+if (cevap !== "bilmem") {
+  const p = Number(q.point) || 0;
+  deltaPop = d.is_correct === 1 ? p : -p;
+}
+if (deltaPop !== 0) {
+  setScoreFloat(deltaPop);
+  setTimeout(() => setScoreFloat(null), 1000);
+}
 
 
-          if (ladderActive && cevap !== "bilmem") {
-            setLadderAttempts((prev) => prev + 1);
-            if (d.is_correct === 1) setLadderCorrect((prev) => prev + 1);
-          }
+
+          if (ladderActive) {
+  // backend’den gerçek sayaçlar geliyorsa onları kullan
+  if (typeof d.attempts === "number") setLadderAttempts(d.attempts);
+  else if (cevap !== "bilmem") setLadderAttempts((prev) => prev + 1);
+
+  if (typeof d.correct === "number") setLadderCorrect(d.correct);
+  else if (cevap !== "bilmem" && d.is_correct === 1)
+    setLadderCorrect((prev) => prev + 1);
+}
+
 
           if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
 feedbackTimeoutRef.current = setTimeout(async () => {
@@ -1715,27 +1764,45 @@ feedbackTimeoutRef.current = setTimeout(async () => {
     setCorrectAnswered((prev) => [...prev, q.id]);
   }
 
-  // Kademeli: %80 şartı yakalandıysa parti bitmeden prompt göster
+  // Kademeli: %80 şartı → önce backend’e sor, yoksa yerelde karar ver
 if (ladderActive) {
-  // Toplam (bu seviyede) sayacını hemen tazele
   await refreshLadderTotals();
 
+  // 1) Sunucudan sor
   const ready = await peekLadderProgress();
-   if (ready === "genius") {
-   await fetchLadderBest(); // sunucu zaten 10'a çekti
 
+  // 2) En güncel yerel sayaçları (bilmem hariç) hesapla
+  const nextAttempts =
+    typeof d.attempts === "number"
+      ? d.attempts
+      : (cevap !== "bilmem" ? ladderAttempts + 1 : ladderAttempts);
+
+  const nextCorrect =
+    typeof d.correct === "number"
+      ? d.correct
+      : (cevap !== "bilmem" && d.is_correct === 1 ? ladderCorrect + 1 : ladderCorrect);
+
+  const nextRate = nextAttempts > 0 ? Math.round((nextCorrect * 100) / nextAttempts) : 0;
+
+  // 3) Karar
+  if (ready === "genius") {
+    await fetchLadderBest();
     setMode("genius");
     setLadderActive(false);
     return;
-  }
-  if (ready === "ok") {
-   await fetchLadderBest(); // sunucu best'i bir üst seviyeye aldı
-
+  } else if (ready === "ok") {
+    await fetchLadderBest();
     setShowLevelUpPrompt(true);
-    setMode("panel");  // modal panelde render edildiği için panele geç
+    setMode("panel");
+    return;
+  } else if (nextAttempts >= 10 && nextRate >= 80) {
+    // ← YEREL YEDEK: backend sinyal vermezse yine de sor
+    setShowLevelUpPrompt(true);
+    setMode("panel");
     return;
   }
 }
+
 
 
 
@@ -2103,11 +2170,6 @@ const ladderSessionRate = useMemo(() => {
 
             </button>
 
-            <div className="text-center text-xs text-gray-600 -mt-2">
-  Rekor seviye: <b className="text-emerald-700">{ladderBest}</b>
-</div>
-
-
             {/* Kategoriler */}
             <button
               className="w-full py-3 rounded-2xl font-bold bg-cyan-600 hover:bg-cyan-800 text-white shadow-lg active:scale-95 transition"
@@ -2228,8 +2290,11 @@ const ladderSessionRate = useMemo(() => {
                   Soruları biraz zorlaştıralım mı?
                 </div>
                 <div className="text-gray-600 mb-4">
-                  Harika gidiyorsun! {ladderLevel}. seviyeyi başarıyla geçtin.
-                </div>
+  Harika gidiyorsun! {ladderLevel}. seviyede bu oturum performansın:
+  <b> {ladderCorrect}/{ladderAttempts}</b> (%
+  {ladderSessionRate}). Soruları biraz zorlaştıralım mı?
+</div>
+
                 <div className="flex gap-3 justify-center">
                   <button
   className="px-4 py-2 rounded-2xl bg-emerald-600 text-white hover:bg-emerald-800"
@@ -2680,224 +2745,299 @@ const ladderSessionRate = useMemo(() => {
   }
 
   /* -------------------- SORU ÇÖZ (NORMAL/KADEMELİ) -------------------- */
-  if (mode === "solve" && questions.length > 0) {
-    const q = questions[currentIdx];
-    const surveyTitleHere = getSurveyTitleForQuestionSync(q);
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600 px-3">
-        <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
-          <h2 className="text-xl font-bold text-cyan-700 mb-3">
-            Soru {currentIdx + 1} / {questions.length}
-          </h2>
-          <div className="text-sm text-gray-600 mb-1">
+if (mode === "solve" && questions.length > 0) {
+  const q = questions[currentIdx];
+  const surveyTitleHere = getSurveyTitleForQuestionSync(q);
+  const pctSolve = Math.round(((currentIdx + 1) / Math.max(1, questions.length)) * 100);
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600 px-3">
+      <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
+        <h2 className="text-xl font-bold text-cyan-700 mb-3">
+          Soru {currentIdx + 1} / {questions.length}
+        </h2>
+        {scoreFloat != null && (
+  <div className={`absolute left-1/2 -translate-x-1/2 top-3 text-2xl font-extrabold ${scoreFloat > 0 ? "text-emerald-600" : "text-red-600"} animate-bounce`}>
+    {scoreFloat > 0 ? `+${scoreFloat}` : scoreFloat}
+  </div>
+)}
+
+
+        {/* İlerleme çubuğu (solve) */}
+        <div
+          className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pctSolve}
+        >
+          <div
+            className="h-full bg-emerald-500 transition-all duration-500"
+            style={{ width: `${pctSolve}%` }}
+          />
+        </div>
+
+        <div className="text-sm text-gray-600 mb-1">
   {ladderActive ? (
     <>
-      {`Kademeli Yarış • Seviye ${ladderLevel} • Deneme ${ladderAttempts} • Doğru ${ladderCorrect}`}
       <div className="mt-1">
-  <StatusBadge
-    text={`Rekor seviye: ${ladderBest}`}
-    color="emerald"
-    size="sm"
-    variant="ghost"
-  />
-</div>
+        <StatusBadge
+          text={`En iyi seviyen ${ladderBest}`}
+          color="emerald"
+          size="md"
+          variant="ghost"
+          className="!px-3 !py-1.5 !text-emerald-800 !text-xl"
+        />
+      </div>
 
       <div className="mt-1">
-  <StatusBadge
-    text={`Bu oturum: ${ladderAttempts} deneme • ${ladderCorrect} doğru • %${ladderSessionRate}`}
-    color="blue"
-    size="sm"
-    variant="ghost"
-  />
-</div>
+        <StatusBadge
+          text={`Bu oturum: ${ladderAttempts} deneme • ${ladderCorrect} doğru • %${ladderSessionRate} başarı`}
+          color="blue"
+          size="sm"
+          variant="ghost"
+        />
+      </div>
 
+      <div className="mt-1">
+        <StatusBadge
+          text={`Seviye atlamak için: ≥ 16/20 (%80)`}
+          color="purple"
+          size="sm"
+          variant="ghost"
+        />
+      </div>
     </>
   ) : (
     "Standart Mod"
   )}
 </div>
 
-          <div className="text-4xl font-mono text-emerald-700 mb-2 select-none">
-            {timeLeft}
+
+        <div
+  className={
+    "text-4xl font-mono mb-2 select-none " +
+    (timeLeft <= 2
+      ? "text-red-600 animate-pulse"
+      : timeLeft <= 5
+      ? "text-orange-600 animate-pulse"
+      : "text-emerald-700")
+  }
+>
+  {timeLeft}
+</div>
+
+
+        {surveyTitleHere ? (
+          <div className="mb-2">
+            <StatusBadge text={surveyTitleHere} color="blue" />
           </div>
+        ) : null}
 
-          {/* NEW: Survey başlığı */}
-          {surveyTitleHere ? (
-            <div className="mb-2">
-              <StatusBadge text={surveyTitleHere} color="blue" />
-            </div>
-          ) : null}
+        <div className="text-lg font-semibold mb-4">{q.question}</div>
+        <div className="text-2xl font-bold text-cyan-600 mb-3">
+          Puan: {q.point}
+        </div>
 
-          <div className="text-lg font-semibold mb-4">{q.question}</div>
-          <div className="text-2xl font-bold text-cyan-600 mb-3">
-            Puan: {q.point}
-            
-          </div>
-
-          {/* === FEL0X: SOLVE ANSWER BUTTONS START === */}
-          <div className="flex flex-col gap-3 mb-4">
-            <button
-              className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("evet", q)}`}
-              onClick={() => handleAnswer("evet")}
-              disabled={timeLeft === 0 || feedbackActive}
-            >
-              Evet
-            </button>
-            <button
-              className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("hayır", q)}`}
-              onClick={() => handleAnswer("hayır")}
-              disabled={timeLeft === 0 || feedbackActive}
-            >
-              Hayır
-            </button>
-            <button
-              className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("bilmem", q)}`}
-              onClick={() => handleAnswer("bilmem")}
-              disabled={timeLeft === 0 || feedbackActive}
-            >
-              Bilmem
-            </button>
-
-            {/* Kitap İpucu */}
-            <button
-              className="py-2 rounded-2xl font-bold bg-yellow-100 text-yellow-800 hover:bg-yellow-200 active:scale-95 disabled:opacity-50"
-              onClick={spendBookAndReveal}
-              disabled={timeLeft === 0 || feedbackActive || books <= 0 || spending || (revealed.qid === q.id)}
-              title={books > 0 ? "1 kitap harcar, doğru cevabı gösterir" : "Kitabın yok"}
-            >
-              <BookIcon className="w-5 h-5 mr-1 inline" /> Kitap İpucu {`(${books})`}
-            </button>
-          </div>
-          {/* === FEL0X: SOLVE ANSWER BUTTONS END === */}
+        <div className="flex flex-col gap-3 mb-4">
+          <button
+            className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("evet", q)}`}
+            onClick={() => handleAnswer("evet")}
+            disabled={timeLeft === 0 || feedbackActive}
+          >
+            ✔️ Evet
+          </button>
+          <button
+            className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("hayır", q)}`}
+            onClick={() => handleAnswer("hayır")}
+            disabled={timeLeft === 0 || feedbackActive}
+          >
+            ✖️ Hayır
+          </button>
+          <button
+            className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("bilmem", q)}`}
+            onClick={() => handleAnswer("bilmem")}
+            disabled={timeLeft === 0 || feedbackActive}
+          >
+            ❓ Bilmem
+          </button>
 
           <button
-            className="mt-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-2xl hover:bg-gray-400"
-            onClick={() => setMode("thankyou")}
-          >
-            Şimdilik bu kadar yeter
-          </button>
-          {info && <div className="text-red-600 mt-2">{info}</div>}
-
-          {feedbackActive && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/92 rounded-3xl text-3xl font-extrabold text-emerald-700 animate-pulse z-10">
-              {feedback}
-              {showStars && <Stars count={starsCount} />}
-            </div>
-          )}
-        </div>
-      </div>
-    );
+  className={
+    "py-2 rounded-2xl font-bold active:scale-95 disabled:opacity-50 " +
+    (books > 0
+      ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
+      : "bg-transparent text-gray-400 border border-gray-200 cursor-not-allowed")
   }
+  onClick={spendBookAndReveal}
+  disabled={timeLeft === 0 || feedbackActive || books <= 0 || spending || (revealed.qid === q.id)}
+  title={books > 0 ? "1 kitap harcar, doğru cevabı gösterir" : "Kitabın yok"}
+>
+  <BookIcon className="w-5 h-5 mr-1 inline" /> Kitap İpucu {`(${books})`}
+</button>
 
-  /* -------------------- SORU ÇÖZ (GÜNLÜK) -------------------- */
-  if (mode === "dailySolve" && dailyQuestion) {
-    const q = dailyQuestion;
-    const sIdx = Number(dailyStatus?.index ?? 0);
-    const sSize = Number.isFinite(Number(dailyStatus?.size)) ? Number(dailyStatus.size) : 0;
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600 px-3">
-        <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
-          <h2 className="text-xl font-bold text-cyan-700 mb-1">Günün Yarışması</h2>
-          <div className="text-sm text-gray-600 mb-1">
-            {sIdx} / {sSize}
-          </div>
-          <div className="text-4xl font-mono text-emerald-700 mb-2 select-none">
-            {timeLeft}
-          </div>
+        </div>
 
-          {/* NEW: Survey başlığı */}
-          {dailySurveyTitle ? (
-            <div className="mb-2">
-              <StatusBadge text={dailySurveyTitle} color="blue" />
-            </div>
-          ) : null}
+        <button
+          className="mt-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-2xl hover:bg-gray-400"
+          onClick={() => setMode("thankyou")}
+        >
+          Şimdilik bu kadar yeter
+        </button>
 
-          <div className="text-lg font-semibold mb-4">{q.question}</div>
-          <div className="text-2xl font-bold text-cyan-600 mb-3">
-            Puan: {q.point}
+        {info && <div className="text-red-600 mt-2">{info}</div>}
+
+        {feedbackActive && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/92 rounded-3xl text-3xl font-extrabold text-emerald-700 animate-pulse z-10">
+            {feedback}
+            {showStars && <Stars count={starsCount} />}
           </div>
-          
-          {typeof dailyStatus?.streak_current === "number" && (
-  <div className="mb-2">
-    <StatusBadge
-      text={`Seri: ${dailyStatus.streak_current} gün`}
-      color="emerald"
-      size="sm"
-    />
-    {(dailyStatus?.today_bonus_per_correct ?? 0) > 0 && (
-      <StatusBadge
-        text={`Bugün +${dailyStatus.today_bonus_per_correct}/doğru`}
-        color="orange"
-        size="sm"
-        className="ml-2"
-      />
-    )}
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+/* -------------------- SORU ÇÖZ (GÜNLÜK) -------------------- */
+if (mode === "dailySolve" && dailyQuestion) {
+  const q = dailyQuestion;
+  const sIdx = Number(dailyStatus?.index ?? 0);
+  const sSize = Number.isFinite(Number(dailyStatus?.size)) ? Number(dailyStatus.size) : 0;
+  const pctDaily = Math.round((sIdx / Math.max(1, sSize)) * 100);
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600 px-3">
+      <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
+        <h2 className="text-xl font-bold text-cyan-700 mb-1">Günün Yarışması</h2>
+        {scoreFloat != null && (
+  <div className={`absolute left-1/2 -translate-x-1/2 top-3 text-2xl font-extrabold ${scoreFloat > 0 ? "text-emerald-600" : "text-red-600"} animate-bounce`}>
+    {scoreFloat > 0 ? `+${scoreFloat}` : scoreFloat}
   </div>
 )}
 
 
-          {/* === FEL0X: DAILYSOLVE ANSWER BUTTONS START === */}
-          <div className="flex flex-col gap-3 mb-4">
-            <button
-              className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("evet", q)}`}
-              onClick={handleDailyAnswer("evet")}
-              disabled={timeLeft === 0 || feedbackActive}
-            >
-              Evet
-            </button>
-            <button
-              className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("hayır", q)}`}
-              onClick={handleDailyAnswer("hayır")}
-              disabled={timeLeft === 0 || feedbackActive}
-            >
-              Hayır
-            </button>
-            <button
-              className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("bilmem", q)}`}
-              onClick={handleDailyAnswer("bilmem")}
-              disabled={timeLeft === 0 || feedbackActive}
-            >
-              Bilmem
-            </button>
+        <div className="text-sm text-gray-600 mb-1">
+          {sIdx} / {sSize}
+        </div>
 
-  {/* Günlük toplam puanın (ANLIK) */}
-  <div className="text-sm font-bold text-emerald-700 text-center -mt-1">
-    Bugünkü toplam puanın: {nf.format(dailyPoints)}
-  </div>
+        {/* İlerleme çubuğu (dailySolve) */}
+        <div
+          className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pctDaily}
+        >
+          <div
+            className="h-full bg-emerald-500 transition-all duration-500"
+            style={{ width: `${pctDaily}%` }}
+          />
+        </div>
+
+       <div
+  className={
+    "text-4xl font-mono mb-2 select-none " +
+    (timeLeft <= 2
+      ? "text-red-600 animate-pulse"
+      : timeLeft <= 5
+      ? "text-orange-600 animate-pulse"
+      : "text-emerald-700")
+  }
+>
+  {timeLeft}
+</div>
 
 
-            {/* Kitap İpucu */}
-            <button
-              className="py-2 rounded-2xl font-bold bg-yellow-100 text-yellow-800 hover:bg-yellow-200 active:scale-95 disabled:opacity-50"
-              onClick={spendBookAndReveal}
-              disabled={timeLeft === 0 || feedbackActive || books <= 0 || spending || (revealed.qid === q.id)}
-              title={books > 0 ? "1 kitap harcar, doğru cevabı gösterir" : "Kitabın yok"}
-            >
-              <span className="mr-1">📚</span> Kitap İpucu {`(${books})`}
-            </button>
+        {dailySurveyTitle ? (
+          <div className="mb-2">
+            <StatusBadge text={dailySurveyTitle} color="blue" />
           </div>
-          {/* === FEL0X: DAILYSOLVE ANSWER BUTTONS END === */}
+        ) : null}
+
+        <div className="text-lg font-semibold mb-4">{q.question}</div>
+        <div className="text-2xl font-bold text-cyan-600 mb-3">
+          Puan: {q.point}
+        </div>
+
+        {typeof dailyStatus?.streak_current === "number" && (
+          <div className="mb-2">
+            <StatusBadge
+              text={`Seri: ${dailyStatus.streak_current} gün`}
+              color="emerald"
+              size="sm"
+            />
+            {(dailyStatus?.today_bonus_per_correct ?? 0) > 0 && (
+              <StatusBadge
+                text={`Bugün +${dailyStatus.today_bonus_per_correct}/doğru`}
+                color="orange"
+                size="sm"
+                className="ml-2"
+              />
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3 mb-4">
+          <button
+            className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("evet", q)}`}
+            onClick={handleDailyAnswer("evet")}
+            disabled={timeLeft === 0 || feedbackActive}
+          >
+            Evet
+          </button>
+          <button
+            className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("hayır", q)}`}
+            onClick={handleDailyAnswer("hayır")}
+            disabled={timeLeft === 0 || feedbackActive}
+          >
+            Hayır
+          </button>
+          <button
+            className={`py-3 rounded-2xl font-bold bg-cyan-600 text-white hover:bg-cyan-800 active:scale-95${highlightBtn("bilmem", q)}`}
+            onClick={handleDailyAnswer("bilmem")}
+            disabled={timeLeft === 0 || feedbackActive}
+          >
+            Bilmem
+          </button>
+
+          <div className="text-sm font-bold text-emerald-700 text-center -mt-1">
+            Bugünkü toplam puanın: {nf.format(dailyPoints)}
+          </div>
 
           <button
-            className="mt-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-2xl hover:bg-gray-400"
-            onClick={handleDailySkip}
+            className="py-2 rounded-2xl font-bold bg-yellow-100 text-yellow-800 hover:bg-yellow-200 active:scale-95 disabled:opacity-50"
+            onClick={spendBookAndReveal}
+            disabled={timeLeft === 0 || feedbackActive || books <= 0 || spending || (revealed.qid === q.id)}
+            title={books > 0 ? "1 kitap harcar, doğru cevabı gösterir" : "Kitabın yok"}
           >
-            Şimdilik bu kadar yeter
+            <span className="mr-1">📚</span> Kitap İpucu {`(${books})`}
           </button>
-          {info && <div className="text-red-600 mt-2">{info}</div>}
-
-          {feedbackActive && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/92 rounded-3xl text-3xl font-extrabold text-emerald-700 animate-pulse z-10">
-              {feedback}
-              {showStars && <Stars count={starsCount} />}
-            </div>
-          )}
-          <Toast toast={toast} />
-
         </div>
+
+        <button
+          className="mt-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-2xl hover:bg-gray-400"
+          onClick={handleDailySkip}
+        >
+          Şimdilik bu kadar yeter
+        </button>
+
+        {info && <div className="text-red-600 mt-2">{info}</div>}
+
+        {feedbackActive && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/92 rounded-3xl text-3xl font-extrabold text-emerald-700 animate-pulse z-10">
+            {feedback}
+            {showStars && <Stars count={starsCount} />}
+          </div>
+        )}
+
+        <Toast toast={toast} />
       </div>
-    );
-  }
+    </div>
+  );
+}
+
+
 
   /* -------------------- DAHİ (kademeli final) -------------------- */
   if (mode === "genius") {
