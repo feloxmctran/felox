@@ -96,7 +96,7 @@ export default function App() {
           }
         />
 
-        {/* Düello */}
+        {/* Düello Lobi */}
         <Route
           path="/duello"
           element={
@@ -105,8 +105,18 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Düello Maç – iki path de destekleniyor */}
         <Route
           path="/duello/:matchId"
+          element={
+            <ProtectedRoute allowedRoles={["USER"]}>
+              <DuelloMatchRoute />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/duello/match/:matchId"
           element={
             <ProtectedRoute allowedRoles={["USER"]}>
               <DuelloMatchRoute />

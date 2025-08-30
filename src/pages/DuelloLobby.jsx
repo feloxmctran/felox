@@ -19,15 +19,20 @@ async function getFeloxUser() {
   return userStr ? JSON.parse(userStr) : null;
 }
 
-const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
+const apiUrl =
+  process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
 export default function DuelloLobby() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
 
-  // --- Avatar için
+  // --- Avatar için ek state'ler
   const [avatarManifest, setAvatarManifest] = useState(null);
   const [bestTitle, setBestTitle] = useState("");
+
+  // --- User code için ek state
+  const [userCode, setUserCode] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const gender = useMemo(() => {
     const raw = String(user?.cinsiyet ?? "")
@@ -50,6 +55,7 @@ export default function DuelloLobby() {
     return "unknown";
   }, [user?.cinsiyet]);
 
+  // Manifesti yükle (bir kere)
   useEffect(() => {
     fetch("/avatars/manifest.json")
       .then((r) => (r.ok ? r.json() : null))
@@ -57,6 +63,7 @@ export default function DuelloLobby() {
       .catch(() => {});
   }, []);
 
+  // En iyi başlık (avatar seçimi için hafif versiyon)
   useEffect(() => {
     if (!user?.id) return;
     (async () => {
@@ -78,6 +85,7 @@ export default function DuelloLobby() {
     })();
   }, [user?.id]);
 
+  // Avatar URL üret
   const getAvatarUrl = () => {
     const normalizedTitle = String(bestTitle || "").trim().toLowerCase();
     let entry = {};
@@ -87,8 +95,12 @@ export default function DuelloLobby() {
       );
       entry = foundKey ? avatarManifest[foundKey] : {};
     }
-    if (gender === "male") return `/avatars/${entry.male || "default-male.png"}`;
-    if (gender === "female") return `/avatars/${entry.female || "default-female.png"}`;
+    if (gender === "male") {
+      return `/avatars/${entry.male || "default-male.png"}`;
+    }
+    if (gender === "female") {
+      return `/avatars/${entry.female || "default-female.png"}`;
+    }
     return `/avatars/${entry.neutral || entry.female || entry.male || "default-female.png"}`;
   };
 
@@ -110,22 +122,51 @@ export default function DuelloLobby() {
 
   useEffect(() => {
     getFeloxUser().then((u) => {
-      if (!u) {
-        window.location.href = "/login";
-        return;
-      }
+      if (!u) { window.location.href = "/login"; return; }
       setUser(u);
     });
   }, []);
 
-  /* =============================
-   * BACKEND UÇLARIYLA UYUMLU İSTEKLER
-   * ============================= */
+  // User code'u getir (önce user objesinden, yoksa backend)
+  useEffect(() => {
+    if (!user?.id) return;
+    if (user?.user_code) {
+      setUserCode(user.user_code);
+      return;
+    }
+    (async () => {
+      try {
+        const r = await fetch(`${apiUrl}/api/user/${user.id}/user-code`);
+        const d = await r.json();
+        if (d?.success && d.user_code) setUserCode(d.user_code);
+      } catch {}
+    })();
+  }, [user?.id, user?.user_code]);
+
+  const copyUserCode = async () => {
+    if (!userCode) return;
+    try {
+      await navigator.clipboard.writeText(userCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // Fallback
+      const ta = document.createElement("textarea");
+      ta.value = userCode;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    }
+  };
+
   const fetchProfile = useCallback(async () => {
     if (!user?.id) return;
     setProfileLoading(true);
     try {
-      const r = await fetch(`${apiUrl}/api/duello/profile/${user.id}`);
+      const r = await fetch(`${apiUrl}/api/duello/profile?user_id=${user.id}`);
       const d = await r.json();
       if (d?.success && d.profile) {
         setReady(!!d.profile.ready);
@@ -141,30 +182,11 @@ export default function DuelloLobby() {
     setListsLoading(true);
     try {
       const [rin, rout] = await Promise.all([
-        fetch(`${apiUrl}/api/duello/inbox/${user.id}`).then((r) => r.json()),
-        fetch(`${apiUrl}/api/duello/outbox/${user.id}`).then((r) => r.json()),
+        fetch(`${apiUrl}/api/duello/invites/incoming?user_id=${user.id}`).then((r) => r.json()),
+        fetch(`${apiUrl}/api/duello/invites/outgoing?user_id=${user.id}`).then((r) => r.json()),
       ]);
-
-      const inbox = Array.isArray(rin?.invites)
-        ? rin.invites.map((x) => ({
-            id: x.id,
-            mode: x.mode,
-            status: x.status,
-            from: { ad: x.from_ad, soyad: x.from_soyad, user_code: x.from_user_code },
-          }))
-        : [];
-
-      const outbox = Array.isArray(rout?.invites)
-        ? rout.invites.map((x) => ({
-            id: x.id,
-            mode: x.mode,
-            status: x.status,
-            to: { ad: x.to_ad, soyad: x.to_soyad, user_code: x.to_user_code },
-          }))
-        : [];
-
-      setIncoming(inbox);
-      setOutgoing(outbox);
+      setIncoming(Array.isArray(rin?.invites) ? rin.invites : []);
+      setOutgoing(Array.isArray(rout?.invites) ? rout.invites : []);
     } finally {
       setListsLoading(false);
     }
@@ -180,13 +202,24 @@ export default function DuelloLobby() {
     if (!user?.id) return;
     setProfileLoading(true);
     try {
-      const r = await fetch(`${apiUrl}/api/duello/ready`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: user.id, ready: !ready }),
-      });
-      const d = await r.json();
-      if (d?.success) setReady((v) => !v);
+      let ok = false;
+      try {
+        const r = await fetch(`${apiUrl}/api/duello/profile/ready`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: user.id, ready: !ready }),
+        });
+        ok = (await r.json())?.success;
+      } catch {}
+      if (!ok) {
+        const r2 = await fetch(`${apiUrl}/api/duello/profile`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: user.id, ready: !ready, visibility_mode: visibility }),
+        });
+        ok = (await r2.json())?.success;
+      }
+      if (ok) setReady((v) => !v);
     } finally {
       setProfileLoading(false);
     }
@@ -194,16 +227,20 @@ export default function DuelloLobby() {
 
   const changeVisibility = async (v) => {
     if (!user?.id) return;
-    setVisibility(v); // optimistic
+    setVisibility(v);
     try {
-      await fetch(`${apiUrl}/api/duello/visibility`, {
+      await fetch(`${apiUrl}/api/duello/profile/visibility`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: user.id, visibility_mode: v }),
+      }).catch(async () => {
+        await fetch(`${apiUrl}/api/duello/profile`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: user.id, ready, visibility_mode: v }),
+        });
       });
-    } catch {
-      // sessizce bırak
-    }
+    } catch {}
   };
 
   const sendInvite = async () => {
@@ -214,7 +251,7 @@ export default function DuelloLobby() {
     }
     setSending(true);
     try {
-      const r = await fetch(`${apiUrl}/api/duello/invite`, {
+      const r = await fetch(`${apiUrl}/api/duello/invites/by-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -222,7 +259,17 @@ export default function DuelloLobby() {
           to_user_code: targetCode.trim(),
           mode: inviteMode,
         }),
-      });
+      }).catch(() =>
+        fetch(`${apiUrl}/api/duello/invites`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from_user_id: user.id,
+            to_user_code: targetCode.trim(),
+            mode: inviteMode,
+          }),
+        })
+      );
       const d = await r.json();
       if (d?.success) {
         setTargetCode("");
@@ -237,25 +284,17 @@ export default function DuelloLobby() {
     }
   };
 
-  const act = async (inviteId, action) => {
+  const act = async (id, action) => {
     try {
-      if (action === "accept" || action === "reject") {
-        const r = await fetch(`${apiUrl}/api/duello/invite/respond`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ invite_id: inviteId, user_id: user?.id, action }),
-        });
-        const d = await r.json();
-        if (d?.success && d?.match?.id) {
-          navigate(`/duello/match/${d.match.id}`);
-          return;
-        }
-      } else if (action === "cancel") {
-        await fetch(`${apiUrl}/api/duello/invite/cancel`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ invite_id: inviteId, user_id: user?.id }),
-        });
+      const r = await fetch(`${apiUrl}/api/duello/invites/${id}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: user?.id }),
+      });
+      const d = await r.json();
+      if (d?.success && d?.match?.id) {
+        navigate(`/duello/match/${d.match.id}`);
+        return;
       }
       await fetchLists();
     } catch {}
@@ -272,7 +311,7 @@ export default function DuelloLobby() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
       <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
-        {/* === ÜST BAŞLIK: Avatar + İsim (UserPanel ile aynı görünüm) === */}
+        {/* === ÜST BAŞLIK: Avatar + İsim + KOD === */}
         <div className="flex items-center gap-3 mb-4 w-full">
           <div className="rounded-full bg-gray-100 p-1 shadow-md">
             <img
@@ -288,6 +327,21 @@ export default function DuelloLobby() {
               {user.ad} {user.soyad}
             </h1>
             <div className="text-xs text-gray-500 mt-0.5">Düello Lobi</div>
+
+            {/* KULLANICI KODU */}
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-200 font-mono text-sm">
+                Kodun: <b className="tracking-wider">{userCode || "—"}</b>
+              </span>
+              <button
+                type="button"
+                onClick={copyUserCode}
+                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-cyan-600 text-white hover:bg-cyan-700 active:scale-95"
+                disabled={!userCode}
+              >
+                {copied ? "Kopyalandı ✓" : "Kopyala"}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -367,7 +421,11 @@ export default function DuelloLobby() {
             Not: user_code kutusuna “ABC123” gibi kod giriyorsun.
           </div>
 
-          {info && <div className="mt-2 text-sm text-red-600">{info}</div>}
+          {info && (
+            <div className="mt-2 text-sm text-red-600">
+              {info}
+            </div>
+          )}
         </div>
 
         {/* GELEN / GİDEN KUTULARI */}
@@ -381,7 +439,10 @@ export default function DuelloLobby() {
             ) : (
               <ul className="space-y-2">
                 {incoming.map((i) => (
-                  <li key={i.id} className="border border-gray-200 rounded-xl p-2 text-sm">
+                  <li
+                    key={i.id}
+                    className="border border-gray-200 rounded-xl p-2 text-sm"
+                  >
                     <div className="font-semibold text-gray-800">
                       {i.from?.ad} {i.from?.soyad} <span className="text-gray-500">({i.mode})</span>
                     </div>
@@ -394,7 +455,7 @@ export default function DuelloLobby() {
                       </button>
                       <button
                         className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-200 text-gray-700 hover:bg-gray-300"
-                        onClick={() => act(i.id, "reject")}
+                        onClick={() => act(i.id, "decline")}
                       >
                         Reddet
                       </button>
@@ -414,9 +475,13 @@ export default function DuelloLobby() {
             ) : (
               <ul className="space-y-2">
                 {outgoing.map((i) => (
-                  <li key={i.id} className="border border-gray-200 rounded-xl p-2 text-sm">
+                  <li
+                    key={i.id}
+                    className="border border-gray-200 rounded-xl p-2 text-sm"
+                  >
                     <div className="font-semibold text-gray-800">
-                      {i.to?.ad} {i.to?.soyad} <span className="text-gray-500">({i.mode})</span>
+                      {i.to?.ad} {i.to?.soyad}{" "}
+                      <span className="text-gray-500">({i.mode})</span>
                     </div>
                     {i.status === "pending" && (
                       <div className="mt-1">
