@@ -162,11 +162,14 @@ export default function DuelloLobby() {
     }
   };
 
+  /* =================== API UYUMLU FONKSİYONLAR =================== */
+
+  // PROFİLİ GETİR
   const fetchProfile = useCallback(async () => {
     if (!user?.id) return;
     setProfileLoading(true);
     try {
-      const r = await fetch(`${apiUrl}/api/duello/profile?user_id=${user.id}`);
+      const r = await fetch(`${apiUrl}/api/duello/profile/${user.id}`);
       const d = await r.json();
       if (d?.success && d.profile) {
         setReady(!!d.profile.ready);
@@ -177,72 +180,72 @@ export default function DuelloLobby() {
     }
   }, [user?.id]);
 
+  // GELEN/GİDEN KUTULARI GETİR
   const fetchLists = useCallback(async () => {
     if (!user?.id) return;
     setListsLoading(true);
     try {
       const [rin, rout] = await Promise.all([
-        fetch(`${apiUrl}/api/duello/invites/incoming?user_id=${user.id}`).then((r) => r.json()),
-        fetch(`${apiUrl}/api/duello/invites/outgoing?user_id=${user.id}`).then((r) => r.json()),
+        fetch(`${apiUrl}/api/duello/inbox/${user.id}`).then((r) => r.json()),
+        fetch(`${apiUrl}/api/duello/outbox/${user.id}`).then((r) => r.json()),
       ]);
-      setIncoming(Array.isArray(rin?.invites) ? rin.invites : []);
-      setOutgoing(Array.isArray(rout?.invites) ? rout.invites : []);
+
+      setIncoming((rin?.invites || []).map(i => ({
+        id: i.id,
+        mode: i.mode,
+        status: i.status,
+        from: { ad: i.from_ad, soyad: i.from_soyad, user_code: i.from_user_code },
+      })));
+
+      setOutgoing((rout?.invites || []).map(i => ({
+        id: i.id,
+        mode: i.mode,
+        status: i.status,
+        to: { ad: i.to_ad, soyad: i.to_soyad, user_code: i.to_user_code },
+      })));
     } finally {
       setListsLoading(false);
     }
   }, [user?.id]);
 
+  // İlk yüklemede profili ve listeleri çek
   useEffect(() => {
     if (!user?.id) return;
     fetchProfile();
     fetchLists();
   }, [user?.id, fetchProfile, fetchLists]);
 
+  // HAZIRLIK (READY) DEĞİŞTİR
   const toggleReady = async () => {
     if (!user?.id) return;
     setProfileLoading(true);
     try {
-      let ok = false;
-      try {
-        const r = await fetch(`${apiUrl}/api/duello/profile/ready`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: user.id, ready: !ready }),
-        });
-        ok = (await r.json())?.success;
-      } catch {}
-      if (!ok) {
-        const r2 = await fetch(`${apiUrl}/api/duello/profile`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: user.id, ready: !ready, visibility_mode: visibility }),
-        });
-        ok = (await r2.json())?.success;
-      }
-      if (ok) setReady((v) => !v);
+      const r = await fetch(`${apiUrl}/api/duello/ready`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: user.id, ready: !ready }),
+      });
+      const d = await r.json();
+      if (d?.success) setReady(v => !v);
     } finally {
       setProfileLoading(false);
     }
   };
 
+  // GÖRÜNÜRLÜK DEĞİŞTİR
   const changeVisibility = async (v) => {
     if (!user?.id) return;
     setVisibility(v);
     try {
-      await fetch(`${apiUrl}/api/duello/profile/visibility`, {
+      await fetch(`${apiUrl}/api/duello/visibility`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: user.id, visibility_mode: v }),
-      }).catch(async () => {
-        await fetch(`${apiUrl}/api/duello/profile`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: user.id, ready, visibility_mode: v }),
-        });
       });
     } catch {}
   };
 
+  // DAVET GÖNDER
   const sendInvite = async () => {
     setInfo("");
     if (!user?.id || !targetCode.trim()) {
@@ -251,49 +254,50 @@ export default function DuelloLobby() {
     }
     setSending(true);
     try {
-      const r = await fetch(`${apiUrl}/api/duello/invites/by-code`, {
+      const r = await fetch(`${apiUrl}/api/duello/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           from_user_id: user.id,
           to_user_code: targetCode.trim(),
-          mode: inviteMode,
+          mode: inviteMode, // 'info' | 'speed'
         }),
-      }).catch(() =>
-        fetch(`${apiUrl}/api/duello/invites`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            from_user_id: user.id,
-            to_user_code: targetCode.trim(),
-            mode: inviteMode,
-          }),
-        })
-      );
+      });
       const d = await r.json();
       if (d?.success) {
         setTargetCode("");
-        fetchLists();
+        await fetchLists();
       } else {
         setInfo(d?.error || "Davet gönderilemedi.");
       }
     } catch {
-      setInfo("Davet gönderilemedi (bağlantı hatası).");
+      setInfo("Davet gönderilemedi (ağ/CORS).");
     } finally {
       setSending(false);
     }
   };
 
+  // KABUL/RET/İPTAL
   const act = async (id, action) => {
     try {
-      const r = await fetch(`${apiUrl}/api/duello/invites/${id}/${action}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: user?.id }),
-      });
+      const mapped = action === "decline" ? "reject" : action; // UI geriye dönük
+      let r;
+      if (mapped === "accept" || mapped === "reject") {
+        r = await fetch(`${apiUrl}/api/duello/invite/respond`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invite_id: id, user_id: user.id, action: mapped }),
+        });
+      } else if (mapped === "cancel") {
+        r = await fetch(`${apiUrl}/api/duello/invite/cancel`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invite_id: id, user_id: user.id }),
+        });
+      }
       const d = await r.json();
       if (d?.success && d?.match?.id) {
-        navigate(`/duello/match/${d.match.id}`);
+        navigate(`/duello/${d.match.id}`);
         return;
       }
       await fetchLists();
