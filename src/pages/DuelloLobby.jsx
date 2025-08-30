@@ -215,6 +215,34 @@ export default function DuelloLobby() {
     fetchLists();
   }, [user?.id, fetchProfile, fetchLists]);
 
+  // *** YENİ: Gönderen tarafta maça otomatik geç (pending outbox varken) ***
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const hasPending = outgoing?.some((i) => i.status === "pending");
+    if (!hasPending) return; // bekleyen davet yoksa gereksiz poll etme
+
+    let stop = false;
+    let t = null;
+
+    const tick = async () => {
+      try {
+        const r = await fetch(`${apiUrl}/api/duello/active/${user.id}`);
+        const d = await r.json();
+        if (!stop && d?.success && d?.match_id) {
+          navigate(`/duello/${d.match_id}`);
+          return;
+        }
+      } catch {
+        // sessiz geç
+      }
+      if (!stop) t = setTimeout(tick, 2000); // 2 sn
+    };
+
+    tick();
+    return () => { stop = true; if (t) clearTimeout(t); };
+  }, [user?.id, outgoing, navigate]);
+
   // HAZIRLIK (READY) DEĞİŞTİR
   const toggleReady = async () => {
     if (!user?.id) return;
