@@ -104,6 +104,23 @@ export default function DuelloMatch({ matchId, userId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, userId]);
 
+  // süre 0 olunca (bitmediyse) tek sefer reveal
+useEffect(() => {
+  if (!st || finished) return;
+  if (sec === 0 && !revealGuardRef.current) {
+    revealGuardRef.current = true;
+    revealNext({ matchId, user_id: userId })
+      .catch(() => {})
+      .finally(() => {
+        setTimeout(() => {
+          revealGuardRef.current = false;
+          fetchStatus();
+        }, 250);
+      });
+  }
+}, [sec, finished]); // st'yi eklemeye gerek yok
+
+
   // --- bitince sayaç/poll durdur
   useEffect(() => {
     if (finished) {

@@ -1,6 +1,19 @@
 // src/pages/DuelloLobby.jsx
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import {
+  API,                             // performans fetch'i için taban URL
+  getProfile as apiGetProfile,
+  setReady as apiSetReady,
+  setVisibility as apiSetVisibility,
+  createInvite,
+  inbox,
+  outbox,
+  respondInvite,
+  cancelInvite,
+  activeMatch,
+  getUserCode as apiGetUserCode,
+} from "../api/duello";
 
 /* === Felox universal user storage (UserPanel ile aynı mantık) === */
 async function getFeloxUser() {
@@ -19,8 +32,6 @@ async function getFeloxUser() {
   return userStr ? JSON.parse(userStr) : null;
 }
 
-const apiUrl =
-  process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
 export default function DuelloLobby() {
   const navigate = useNavigate();
@@ -68,7 +79,7 @@ export default function DuelloLobby() {
     if (!user?.id) return;
     (async () => {
       try {
-        const r = await fetch(`${apiUrl}/api/user/${user.id}/performance`);
+        const r = await fetch(`${API}/api/user/${user.id}/performance`);
         const d = await r.json();
         if (d?.success && Array.isArray(d.performance) && d.performance.length) {
           const top = d.performance.reduce(
@@ -129,19 +140,16 @@ export default function DuelloLobby() {
 
   // User code'u getir (önce user objesinden, yoksa backend)
   useEffect(() => {
-    if (!user?.id) return;
-    if (user?.user_code) {
-      setUserCode(user.user_code);
-      return;
-    }
-    (async () => {
-      try {
-        const r = await fetch(`${apiUrl}/api/user/${user.id}/user-code`);
-        const d = await r.json();
-        if (d?.success && d.user_code) setUserCode(d.user_code);
-      } catch {}
-    })();
-  }, [user?.id, user?.user_code]);
+  if (!user?.id) return;
+  if (user?.user_code) {
+    setUserCode(user.user_code);
+    return;
+  }
+  apiGetUserCode(user.id)
+    .then(d => { if (d?.success && d.user_code) setUserCode(d.user_code); })
+    .catch(() => {});
+}, [user?.id, user?.user_code]);
+
 
   const copyUserCode = async () => {
     if (!userCode) return;
@@ -166,47 +174,45 @@ export default function DuelloLobby() {
 
   // PROFİLİ GETİR
   const fetchProfile = useCallback(async () => {
-    if (!user?.id) return;
-    setProfileLoading(true);
-    try {
-      const r = await fetch(`${apiUrl}/api/duello/profile/${user.id}`);
-      const d = await r.json();
-      if (d?.success && d.profile) {
-        setReady(!!d.profile.ready);
-        setVisibility(d.profile.visibility_mode || "public");
-      }
-    } finally {
-      setProfileLoading(false);
+  if (!user?.id) return;
+  setProfileLoading(true);
+  try {
+    const d = await apiGetProfile(user.id);
+    if (d?.success && d.profile) {
+      setReady(!!d.profile.ready);
+      setVisibility(d.profile.visibility_mode || "public");
     }
-  }, [user?.id]);
+  } finally {
+    setProfileLoading(false);
+  }
+}, [user?.id]);
+
 
   // GELEN/GİDEN KUTULARI GETİR
   const fetchLists = useCallback(async () => {
-    if (!user?.id) return;
-    setListsLoading(true);
-    try {
-      const [rin, rout] = await Promise.all([
-        fetch(`${apiUrl}/api/duello/inbox/${user.id}`).then((r) => r.json()),
-        fetch(`${apiUrl}/api/duello/outbox/${user.id}`).then((r) => r.json()),
-      ]);
+  if (!user?.id) return;
+  setListsLoading(true);
+  try {
+    const [rin, rout] = await Promise.all([inbox(user.id), outbox(user.id)]);
 
-      setIncoming((rin?.invites || []).map(i => ({
-        id: i.id,
-        mode: i.mode,
-        status: i.status,
-        from: { ad: i.from_ad, soyad: i.from_soyad, user_code: i.from_user_code },
-      })));
+    setIncoming((rin?.invites || []).map(i => ({
+      id: i.id,
+      mode: i.mode,
+      status: i.status,
+      from: { ad: i.from_ad, soyad: i.from_soyad, user_code: i.from_user_code },
+    })));
 
-      setOutgoing((rout?.invites || []).map(i => ({
-        id: i.id,
-        mode: i.mode,
-        status: i.status,
-        to: { ad: i.to_ad, soyad: i.to_soyad, user_code: i.to_user_code },
-      })));
-    } finally {
-      setListsLoading(false);
-    }
-  }, [user?.id]);
+    setOutgoing((rout?.invites || []).map(i => ({
+      id: i.id,
+      mode: i.mode,
+      status: i.status,
+      to: { ad: i.to_ad, soyad: i.to_soyad, user_code: i.to_user_code },
+    })));
+  } finally {
+    setListsLoading(false);
+  }
+}, [user?.id]);
+
 
   // İlk yüklemede profili ve listeleri çek
   useEffect(() => {
@@ -227,12 +233,12 @@ export default function DuelloLobby() {
 
     const tick = async () => {
       try {
-        const r = await fetch(`${apiUrl}/api/duello/active/${user.id}`);
-        const d = await r.json();
-        if (!stop && d?.success && d?.match_id) {
-          navigate(`/duello/${d.match_id}`);
-          return;
-        }
+        const d = await activeMatch(user.id);
+if (!stop && d?.success && d?.match_id) {
+  navigate(`/duello/${d.match_id}`);
+  return;
+}
+
       } catch {
         // sessiz geç
       }
@@ -245,92 +251,74 @@ export default function DuelloLobby() {
 
   // HAZIRLIK (READY) DEĞİŞTİR
   const toggleReady = async () => {
-    if (!user?.id) return;
-    setProfileLoading(true);
-    try {
-      const r = await fetch(`${apiUrl}/api/duello/ready`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: user.id, ready: !ready }),
-      });
-      const d = await r.json();
-      if (d?.success) setReady(v => !v);
-    } finally {
-      setProfileLoading(false);
-    }
-  };
+  if (!user?.id) return;
+  setProfileLoading(true);
+  try {
+    const d = await apiSetReady({ user_id: user.id, ready: !ready });
+    if (d?.success) setReady(v => !v);
+  } finally {
+    setProfileLoading(false);
+  }
+};
+
 
   // GÖRÜNÜRLÜK DEĞİŞTİR
   const changeVisibility = async (v) => {
-    if (!user?.id) return;
-    setVisibility(v);
-    try {
-      await fetch(`${apiUrl}/api/duello/visibility`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: user.id, visibility_mode: v }),
-      });
-    } catch {}
-  };
+  if (!user?.id) return;
+  setVisibility(v); // optimistic
+  try { await apiSetVisibility({ user_id: user.id, visibility_mode: v }); } catch {}
+};
+
 
   // DAVET GÖNDER
-  const sendInvite = async () => {
-    setInfo("");
-    if (!user?.id || !targetCode.trim()) {
-      setInfo("Hedef user_code yazmalısın.");
-      return;
+  // DAVET GÖNDER
+const sendInvite = async () => {
+  setInfo("");
+  if (!user?.id || !targetCode.trim()) {
+    setInfo("Hedef user_code yazmalısın.");
+    return;
+  }
+  setSending(true);
+  try {
+    const d = await createInvite({
+      from_user_id: user.id,
+      to_user_code: targetCode.trim(),
+      mode: inviteMode, // 'info' | 'speed'
+    });
+    if (d?.success) {
+      setTargetCode("");
+      await fetchLists();
     }
-    setSending(true);
-    try {
-      const r = await fetch(`${apiUrl}/api/duello/invite`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from_user_id: user.id,
-          to_user_code: targetCode.trim(),
-          mode: inviteMode, // 'info' | 'speed'
-        }),
-      });
-      const d = await r.json();
-      if (d?.success) {
-        setTargetCode("");
-        await fetchLists();
-      } else {
-        setInfo(d?.error || "Davet gönderilemedi.");
-      }
-    } catch {
-      setInfo("Davet gönderilemedi (ağ/CORS).");
-    } finally {
-      setSending(false);
-    }
-  };
+  } catch (e) {
+    setInfo(e?.message || "Davet gönderilemedi (ağ/CORS).");
+  } finally {
+    setSending(false);
+  }
+};
+
 
   // KABUL/RET/İPTAL
-  const act = async (id, action) => {
-    try {
-      const mapped = action === "decline" ? "reject" : action; // UI geriye dönük
-      let r;
-      if (mapped === "accept" || mapped === "reject") {
-        r = await fetch(`${apiUrl}/api/duello/invite/respond`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ invite_id: id, user_id: user.id, action: mapped }),
-        });
-      } else if (mapped === "cancel") {
-        r = await fetch(`${apiUrl}/api/duello/invite/cancel`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ invite_id: id, user_id: user.id }),
-        });
-      }
-      const d = await r.json();
+  // KABUL/RET/İPTAL
+const act = async (id, action) => {
+  try {
+    const mapped = action === "decline" ? "reject" : action; // UI geriye dönük
+
+    if (mapped === "accept" || mapped === "reject") {
+      const d = await respondInvite({ invite_id: id, user_id: user.id, action: mapped });
       if (d?.success && d?.match?.id) {
         navigate(`/duello/${d.match.id}`);
         return;
       }
-      await fetchLists();
-    } catch {}
-  };
+    } else if (mapped === "cancel") {
+      await cancelInvite({ invite_id: id, user_id: user.id });
+    }
+
+    await fetchLists();
+  } catch {
+    // sessiz geç; istersen burada setInfo ile mesaj gösterebilirsin
+  }
+};
+
 
   if (!user) {
     return (
