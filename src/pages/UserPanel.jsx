@@ -12,6 +12,8 @@ import {
   SpinnerIcon,
 } from "../icons/Icons";
 
+import { Link } from "react-router-dom";
+
 
 // -------------------- Universal User Storage --------------------
 async function getFeloxUser() {
@@ -2210,6 +2212,18 @@ const ladderSessionRate = useMemo(() => {
             >
               <DiceIcon className="w-5 h-5 mr-2 inline" /> Rastgele Yarış
             </button>
+
+            {/* Düello */}
+{/* Düello */}
+<Link
+  to="/duello"
+  className="block w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-500 hover:to-indigo-800 text-white shadow-lg active:scale-95 transition text-center"
+  title="Düello'ya git"
+>
+  <span className="mr-2">⚔️</span> Düello
+</Link>
+
+
 
             {/* Genel Puan Tablosu */}
             <button

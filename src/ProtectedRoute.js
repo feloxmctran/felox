@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 
 // getFeloxUser fonksiyonu: hem localStorage hem (mobilde) Capacitor destekler
-async function getFeloxUser() {
+export async function getFeloxUser() {
   let userStr = localStorage.getItem("felox_user");
   if (
     !userStr &&

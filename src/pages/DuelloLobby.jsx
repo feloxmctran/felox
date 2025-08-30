@@ -1,0 +1,450 @@
+// src/pages/DuelloLobby.jsx
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
+
+/* === Felox universal user storage (UserPanel ile aynı mantık) === */
+async function getFeloxUser() {
+  let userStr = localStorage.getItem("felox_user");
+  if (
+    !userStr &&
+    window.Capacitor &&
+    (window.Capacitor.isNative || window.Capacitor.isNativePlatform?.())
+  ) {
+    try {
+      const { Preferences } = await import("@capacitor/preferences");
+      const { value } = await Preferences.get({ key: "felox_user" });
+      userStr = value;
+    } catch {}
+  }
+  return userStr ? JSON.parse(userStr) : null;
+}
+
+const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
+
+export default function DuelloLobby() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+
+  // --- Avatar için
+  const [avatarManifest, setAvatarManifest] = useState(null);
+  const [bestTitle, setBestTitle] = useState("");
+
+  const gender = useMemo(() => {
+    const raw = String(user?.cinsiyet ?? "")
+      .toLowerCase()
+      .trim()
+      .normalize("NFKD")
+      .replace(/\p{Diacritic}/gu, "");
+    const s = raw
+      .replace(/ı/g, "i")
+      .replace(/i̇/g, "i")
+      .replace(/ş/g, "s")
+      .replace(/ğ/g, "g")
+      .replace(/ç/g, "c")
+      .replace(/ö/g, "o")
+      .replace(/ü/g, "u")
+      .replace(/â/g, "a");
+
+    if (/(^|[\s_/.-])(erkek|bay|male|man)([\s_/.-]|$)/.test(s)) return "male";
+    if (/(^|[\s_/.-])(kadin|bayan|female|woman)([\s_/.-]|$)/.test(s)) return "female";
+    return "unknown";
+  }, [user?.cinsiyet]);
+
+  useEffect(() => {
+    fetch("/avatars/manifest.json")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setAvatarManifest(d))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      try {
+        const r = await fetch(`${apiUrl}/api/user/${user.id}/performance`);
+        const d = await r.json();
+        if (d?.success && Array.isArray(d.performance) && d.performance.length) {
+          const top = d.performance.reduce(
+            (a, b) => ((b?.net_points || 0) > (a?.net_points || 0) ? b : a),
+            d.performance[0]
+          );
+          setBestTitle(top?.title || "");
+        } else {
+          setBestTitle("");
+        }
+      } catch {
+        setBestTitle("");
+      }
+    })();
+  }, [user?.id]);
+
+  const getAvatarUrl = () => {
+    const normalizedTitle = String(bestTitle || "").trim().toLowerCase();
+    let entry = {};
+    if (avatarManifest) {
+      const foundKey = Object.keys(avatarManifest).find(
+        (k) => k.trim().toLowerCase() === normalizedTitle
+      );
+      entry = foundKey ? avatarManifest[foundKey] : {};
+    }
+    if (gender === "male") return `/avatars/${entry.male || "default-male.png"}`;
+    if (gender === "female") return `/avatars/${entry.female || "default-female.png"}`;
+    return `/avatars/${entry.neutral || entry.female || entry.male || "default-female.png"}`;
+  };
+
+  // --- Profil
+  const [ready, setReady] = useState(false);
+  const [visibility, setVisibility] = useState("public"); // public | friends | none
+  const [profileLoading, setProfileLoading] = useState(true);
+
+  // --- Davet gönder
+  const [inviteMode, setInviteMode] = useState("info"); // 'info' | 'speed'
+  const [targetCode, setTargetCode] = useState("");
+  const [sending, setSending] = useState(false);
+  const [info, setInfo] = useState("");
+
+  // --- Gelen / Giden kutuları
+  const [incoming, setIncoming] = useState([]);
+  const [outgoing, setOutgoing] = useState([]);
+  const [listsLoading, setListsLoading] = useState(false);
+
+  useEffect(() => {
+    getFeloxUser().then((u) => {
+      if (!u) {
+        window.location.href = "/login";
+        return;
+      }
+      setUser(u);
+    });
+  }, []);
+
+  /* =============================
+   * BACKEND UÇLARIYLA UYUMLU İSTEKLER
+   * ============================= */
+  const fetchProfile = useCallback(async () => {
+    if (!user?.id) return;
+    setProfileLoading(true);
+    try {
+      const r = await fetch(`${apiUrl}/api/duello/profile/${user.id}`);
+      const d = await r.json();
+      if (d?.success && d.profile) {
+        setReady(!!d.profile.ready);
+        setVisibility(d.profile.visibility_mode || "public");
+      }
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [user?.id]);
+
+  const fetchLists = useCallback(async () => {
+    if (!user?.id) return;
+    setListsLoading(true);
+    try {
+      const [rin, rout] = await Promise.all([
+        fetch(`${apiUrl}/api/duello/inbox/${user.id}`).then((r) => r.json()),
+        fetch(`${apiUrl}/api/duello/outbox/${user.id}`).then((r) => r.json()),
+      ]);
+
+      const inbox = Array.isArray(rin?.invites)
+        ? rin.invites.map((x) => ({
+            id: x.id,
+            mode: x.mode,
+            status: x.status,
+            from: { ad: x.from_ad, soyad: x.from_soyad, user_code: x.from_user_code },
+          }))
+        : [];
+
+      const outbox = Array.isArray(rout?.invites)
+        ? rout.invites.map((x) => ({
+            id: x.id,
+            mode: x.mode,
+            status: x.status,
+            to: { ad: x.to_ad, soyad: x.to_soyad, user_code: x.to_user_code },
+          }))
+        : [];
+
+      setIncoming(inbox);
+      setOutgoing(outbox);
+    } finally {
+      setListsLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    fetchProfile();
+    fetchLists();
+  }, [user?.id, fetchProfile, fetchLists]);
+
+  const toggleReady = async () => {
+    if (!user?.id) return;
+    setProfileLoading(true);
+    try {
+      const r = await fetch(`${apiUrl}/api/duello/ready`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: user.id, ready: !ready }),
+      });
+      const d = await r.json();
+      if (d?.success) setReady((v) => !v);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const changeVisibility = async (v) => {
+    if (!user?.id) return;
+    setVisibility(v); // optimistic
+    try {
+      await fetch(`${apiUrl}/api/duello/visibility`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: user.id, visibility_mode: v }),
+      });
+    } catch {
+      // sessizce bırak
+    }
+  };
+
+  const sendInvite = async () => {
+    setInfo("");
+    if (!user?.id || !targetCode.trim()) {
+      setInfo("Hedef user_code yazmalısın.");
+      return;
+    }
+    setSending(true);
+    try {
+      const r = await fetch(`${apiUrl}/api/duello/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from_user_id: user.id,
+          to_user_code: targetCode.trim(),
+          mode: inviteMode,
+        }),
+      });
+      const d = await r.json();
+      if (d?.success) {
+        setTargetCode("");
+        fetchLists();
+      } else {
+        setInfo(d?.error || "Davet gönderilemedi.");
+      }
+    } catch {
+      setInfo("Davet gönderilemedi (bağlantı hatası).");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const act = async (inviteId, action) => {
+    try {
+      if (action === "accept" || action === "reject") {
+        const r = await fetch(`${apiUrl}/api/duello/invite/respond`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invite_id: inviteId, user_id: user?.id, action }),
+        });
+        const d = await r.json();
+        if (d?.success && d?.match?.id) {
+          navigate(`/duello/match/${d.match.id}`);
+          return;
+        }
+      } else if (action === "cancel") {
+        await fetch(`${apiUrl}/api/duello/invite/cancel`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invite_id: inviteId, user_id: user?.id }),
+        });
+      }
+      await fetchLists();
+    } catch {}
+  };
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-500 to-cyan-700">
+        <div className="text-white font-semibold">Yükleniyor…</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
+      <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
+        {/* === ÜST BAŞLIK: Avatar + İsim (UserPanel ile aynı görünüm) === */}
+        <div className="flex items-center gap-3 mb-4 w-full">
+          <div className="rounded-full bg-gray-100 p-1 shadow-md">
+            <img
+              src={getAvatarUrl()}
+              alt="avatar"
+              width={128}
+              height={128}
+              className="w-[88px] h-[88px] sm:w-[128px] sm:h-[128px] rounded-full object-contain"
+            />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl font-extrabold text-cyan-700 truncate">
+              {user.ad} {user.soyad}
+            </h1>
+            <div className="text-xs text-gray-500 mt-0.5">Düello Lobi</div>
+          </div>
+        </div>
+
+        {/* PROFİL KARTI */}
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 mb-3">
+          <div className="text-[15px] font-semibold text-gray-800 mb-2">Profil</div>
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm">
+              Hazırım:{" "}
+              <b className={ready ? "text-emerald-700" : "text-gray-500"}>
+                {ready ? "AÇIK" : "KAPALI"}
+              </b>
+            </div>
+            <button
+              className="px-3 py-1.5 rounded-xl text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-800 active:scale-95 disabled:opacity-50"
+              onClick={toggleReady}
+              disabled={profileLoading}
+            >
+              Değiştir
+            </button>
+          </div>
+
+          <div className="mt-3">
+            <div className="text-sm mb-1">Görünürlük:</div>
+            <div className="flex gap-2 flex-wrap">
+              {["public", "friends", "none"].map((v) => (
+                <button
+                  key={v}
+                  onClick={() => changeVisibility(v)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${
+                    visibility === v
+                      ? "bg-cyan-600 text-white border-cyan-600"
+                      : "bg-white text-cyan-700 border-cyan-200 hover:border-cyan-400"
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* DAVET GÖNDER KARTI */}
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 mb-3">
+          <div className="text-[15px] font-semibold text-gray-800 mb-2">Davet Gönder</div>
+
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm text-gray-600">Mod:</span>
+            <select
+              className="px-3 py-1.5 rounded-xl text-sm border border-gray-300 focus:outline-none"
+              value={inviteMode}
+              onChange={(e) => setInviteMode(e.target.value)}
+            >
+              <option value="info">Bilgi</option>
+              <option value="speed">Hız</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              className="flex-1 px-3 py-2 rounded-xl border border-gray-300 focus:outline-none text-sm"
+              placeholder="Hedef user_code"
+              value={targetCode}
+              onChange={(e) => setTargetCode(e.target.value)}
+            />
+            <button
+              className="px-3 py-2 rounded-xl text-sm font-bold bg-blue-600 text-white hover:bg-blue-800 active:scale-95 disabled:opacity-50"
+              onClick={sendInvite}
+              disabled={sending}
+            >
+              Gönder
+            </button>
+          </div>
+
+          <div className="text-[11px] text-gray-500 mt-2">
+            Not: user_code kutusuna “ABC123” gibi kod giriyorsun.
+          </div>
+
+          {info && <div className="mt-2 text-sm text-red-600">{info}</div>}
+        </div>
+
+        {/* GELEN / GİDEN KUTULARI */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
+            <div className="text-[15px] font-semibold text-gray-800 mb-2">Gelen Kutusu</div>
+            {listsLoading ? (
+              <div className="text-sm text-gray-500">Yükleniyor…</div>
+            ) : incoming.length === 0 ? (
+              <div className="text-sm text-gray-500">Boş</div>
+            ) : (
+              <ul className="space-y-2">
+                {incoming.map((i) => (
+                  <li key={i.id} className="border border-gray-200 rounded-xl p-2 text-sm">
+                    <div className="font-semibold text-gray-800">
+                      {i.from?.ad} {i.from?.soyad} <span className="text-gray-500">({i.mode})</span>
+                    </div>
+                    <div className="mt-1 flex gap-2">
+                      <button
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-800"
+                        onClick={() => act(i.id, "accept")}
+                      >
+                        Kabul Et
+                      </button>
+                      <button
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        onClick={() => act(i.id, "reject")}
+                      >
+                        Reddet
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
+            <div className="text-[15px] font-semibold text-gray-800 mb-2">Giden Kutusu</div>
+            {listsLoading ? (
+              <div className="text-sm text-gray-500">Yükleniyor…</div>
+            ) : outgoing.length === 0 ? (
+              <div className="text-sm text-gray-500">Boş</div>
+            ) : (
+              <ul className="space-y-2">
+                {outgoing.map((i) => (
+                  <li key={i.id} className="border border-gray-200 rounded-xl p-2 text-sm">
+                    <div className="font-semibold text-gray-800">
+                      {i.to?.ad} {i.to?.soyad} <span className="text-gray-500">({i.mode})</span>
+                    </div>
+                    {i.status === "pending" && (
+                      <div className="mt-1">
+                        <button
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-500 text-white hover:bg-red-700"
+                          onClick={() => act(i.id, "cancel")}
+                        >
+                          İptal Et
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* Alt aksiyonlar */}
+        <div className="mt-5">
+          <Link
+            to="/user"
+            className="block w-full text-center py-2 rounded-2xl font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300 active:scale-95 transition"
+          >
+            ← Panele Dön
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}

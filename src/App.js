@@ -1,13 +1,61 @@
 // src/App.js
-import React from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  useParams,
+} from "react-router-dom";
+
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import AdminPanel from "./pages/AdminPanel";
 import EditorPanel from "./pages/EditorPanel";
 import UserPanel from "./pages/UserPanel";
-import ProtectedRoute from "./ProtectedRoute";
 
+import ProtectedRoute, { getFeloxUser } from "./ProtectedRoute";
+
+import DuelloLobby from "./pages/DuelloLobby";
+import DuelloMatch from "./pages/DuelloMatch";
+
+/* ---------- Route Wrapper'ları ---------- */
+function DuelloLobbyRoute() {
+  const [uid, setUid] = useState(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const u = await getFeloxUser();
+      setUid(u?.id || null);
+      setReady(true);
+    })();
+  }, []);
+
+  if (!ready) return <div>Yükleniyor...</div>;
+  if (!uid) return <Navigate to="/login" replace />;
+  return <DuelloLobby userId={uid} />;
+}
+
+function DuelloMatchRoute() {
+  const { matchId } = useParams();
+  const [uid, setUid] = useState(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const u = await getFeloxUser();
+      setUid(u?.id || null);
+      setReady(true);
+    })();
+  }, []);
+
+  if (!ready) return <div>Yükleniyor...</div>;
+  if (!uid) return <Navigate to="/login" replace />;
+  return <DuelloMatch matchId={Number(matchId)} userId={uid} />;
+}
+
+/* ---------- App ---------- */
 export default function App() {
   return (
     <Router>
@@ -44,6 +92,24 @@ export default function App() {
           element={
             <ProtectedRoute allowedRoles={["USER"]}>
               <UserPanel />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Düello */}
+        <Route
+          path="/duello"
+          element={
+            <ProtectedRoute allowedRoles={["USER"]}>
+              <DuelloLobbyRoute />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/duello/:matchId"
+          element={
+            <ProtectedRoute allowedRoles={["USER"]}>
+              <DuelloMatchRoute />
             </ProtectedRoute>
           }
         />
