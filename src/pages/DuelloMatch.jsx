@@ -6,7 +6,7 @@ import { getMatchStatus, sendAnswer, revealNext, getSummary } from "../api/duell
 export default function DuelloMatch({ matchId, userId }) {
   const [st, setSt] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [sec, setSec] = useState(24);
+  const [sec, setSec] = useState(16);
   const [answered, setAnswered] = useState(false);
   const [locked, setLocked] = useState(false);
   const [finished, setFinished] = useState(false);
@@ -18,7 +18,7 @@ export default function DuelloMatch({ matchId, userId }) {
   const lastIndexRef = useRef(null);
   const revealGuardRef = useRef(false);
 
-  const perQ = Number(st?.ui?.per_question_seconds || 24);
+  const perQ = Number(st?.ui?.per_question_seconds || 16);
 
   // --- yardımcı: görsel sayacı yeniden başlat
   const restartTick = (start) => {
