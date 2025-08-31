@@ -1,7 +1,7 @@
 // src/pages/DuelloMatch.jsx
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { getMatchStatus, sendAnswer, revealNext, getSummary } from "../api/duello";
+import { getMatchStatus, sendAnswer, revealNext, getSummary, createInvite } from "../api/duello";
 
 export default function DuelloMatch({ matchId, userId }) {
   const [st, setSt] = useState(null);
@@ -52,30 +52,30 @@ export default function DuelloMatch({ matchId, userId }) {
         lastIndexRef.current = idx;
         setAnswered(false);
         setLocked(false);
-        restartTick(Number(data?.ui?.per_question_seconds || 24));
+        restartTick(Number(data?.ui?.per_question_seconds || 16));
       }
 
-      // sunucu "geçilebilir" diyorsa tek sefer reveal
-      const canReveal =
-        !!(data?.ui?.can_reveal ??
-           data?.can_reveal ??
-           data?.everyone_answered ??
-           data?.both_answered);
+      // kendi kurallarımıza göre reveal kararı
+const canReveal =
+  (!data.finished) && (
+    (isSpeed && (mine || opp)) ||       // hiz: biri cevap verdiyse
+    (!isSpeed && mine && opp)          // bilgi: ikisi de cevap verdiyse
+  );
 
-      if (!data.finished && canReveal && !revealGuardRef.current) {
-        revealGuardRef.current = true;
-        try {
-          await revealNext({ matchId, user_id: userId });
-        } catch (e) {
-          // sessiz geç
-          console.error("revealNext error:", e);
-        } finally {
-          setTimeout(() => {
-            revealGuardRef.current = false;
-            fetchStatus();
-          }, 250);
-        }
-      }
+if (canReveal && !revealGuardRef.current) {
+  revealGuardRef.current = true;
+  try {
+    await revealNext({ matchId, user_id: userId });
+  } catch (_) {
+    // sessiz geç
+  } finally {
+    setTimeout(() => {
+      revealGuardRef.current = false;
+      fetchStatus();
+    }, 250);
+  }
+}
+
     } catch (e) {
       setInfo("status hata: " + e.message);
     }
@@ -161,6 +161,27 @@ useEffect(() => {
     }
   };
 
+// --- revanş iste
+const rematch = async () => {
+  try {
+    const code = st?.opponent?.user_code;
+    const mode = st?.match?.mode || "info";
+    if (!code) {
+      setInfo("Rakip kodu alınamadı.");
+      return;
+    }
+    const d = await createInvite({ from_user_id: userId, to_user_code: code, mode });
+    if (d?.success) {
+      setInfo("Revanş daveti gönderildi! Lobiye dönüp bekleyebilirsin.");
+    } else {
+      setInfo(d?.error || "Revanş daveti gönderilemedi.");
+    }
+  } catch (e) {
+    setInfo("revanş hata: " + e.message);
+  }
+};
+
+
   // --- View helpers
   const progressPct = (() => {
     if (!st?.match) return 0;
@@ -201,10 +222,18 @@ useEffect(() => {
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-lg p-6 text-center">
           <h2 className="text-2xl font-extrabold text-cyan-700">Maç bitti</h2>
           <p className="text-gray-600 mt-2">Skorun: <b>{myScore}</b> — Rakip: <b>{oppScore}</b></p>
-          <div className="mt-5 flex gap-3 justify-center">
-            <button onClick={toSummary} className={`${btnBase} bg-cyan-600 hover:bg-cyan-800`}>Özeti Gör</button>
-            <Link to="/duello" className={`${btnBase} bg-gray-400 hover:bg-gray-500`}>Lobiye Dön</Link>
-          </div>
+          <div className="mt-5 flex gap-3 justify-center flex-wrap">
+  <button onClick={toSummary} className={`${btnBase} bg-cyan-600 hover:bg-cyan-800`}>Özeti Gör</button>
+  <button onClick={rematch} className={`${btnBase} bg-emerald-600 hover:bg-emerald-800`}>Revanş İste</button>
+  <Link to="/duello" className={`${btnBase} bg-gray-400 hover:bg-gray-500`}>Lobiye Dön</Link>
+</div>
+
+{info && (
+  <div className="mt-3 text-sm text-red-600">
+    {info}
+  </div>
+)}
+
         </div>
       </div>
     );

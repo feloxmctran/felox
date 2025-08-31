@@ -1,6 +1,6 @@
 // src/pages/DuelloLobby.jsx
-import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   API,                             // performans fetch'i için taban URL
   getProfile as apiGetProfile,
@@ -35,6 +35,9 @@ async function getFeloxUser() {
 
 export default function DuelloLobby() {
   const navigate = useNavigate();
+  const location = useLocation();
+const autoOnceRef = useRef(false); // URL'den otomatik daveti 1 kez çalıştırmak için
+
   const [user, setUser] = useState(null);
 
   // --- Avatar için ek state'ler
@@ -426,7 +429,8 @@ const act = async (id, action) => {
               className="flex-1 px-3 py-2 rounded-xl border border-gray-300 focus:outline-none text-sm"
               placeholder="Hedef user_code"
               value={targetCode}
-              onChange={(e) => setTargetCode(e.target.value)}
+              onChange={(e) => setTargetCode(e.target.value.toUpperCase())}
+
             />
             <button
               className="px-3 py-2 rounded-xl text-sm font-bold bg-blue-600 text-white hover:bg-blue-800 active:scale-95 disabled:opacity-50"
