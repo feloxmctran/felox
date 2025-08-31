@@ -12,7 +12,9 @@ import {
   SpinnerIcon,
 } from "../icons/Icons";
 
-import { Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
+import { openDuelloEventStream } from "../lib/duelloSSE";
+import NotificationBell from "../components/NotificationBell";
 
 
 // -------------------- Universal User Storage --------------------
@@ -460,7 +462,35 @@ function PointsTable({ show, onClose, loading, error, data }) {
 
 /* =============================================================== */
 export default function UserPanel() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState(null);
+
+    // Düello davet sayacı
+  const [duelloUnread, setDuelloUnread] = useState(0);
+  
+
+  // açılışta önceki değeri yükle
+useEffect(() => {
+  const raw = localStorage.getItem("felox_duello_unread");
+  if (raw) setDuelloUnread(Math.min(99, Number(raw) || 0));
+}, []);
+
+
+// her değişimde kaydet
+useEffect(() => {
+  localStorage.setItem("felox_duello_unread", String(duelloUnread));
+}, [duelloUnread]);
+
+  const [lastDuelloInvite, setLastDuelloInvite] = useState(null); // isteğe bağlı: son davet bilgisi
+const clearDuelloUnread = useCallback(() => setDuelloUnread(0), []);
+
+// Duello sayfasına girilince rozet SIFIRLAMA — tek gerçek kaynak burası
+useEffect(() => {
+  if (location.pathname.startsWith("/duello")) {
+    clearDuelloUnread();
+  }
+}, [location.pathname, clearDuelloUnread]);
 
   // Kullanıcı skor ve durum
   const [totalPoints, setTotalPoints] = useState(0);
@@ -504,6 +534,8 @@ const [scoreFloat, setScoreFloat] = useState(null); // number | null
   // Toast (seri bonus bildirimi)
 const [toast, setToast] = useState(null); // { msg, type: 'success' | 'error' }
 const toastTimeoutRef = useRef(null);
+const inviteIdsRef = useRef(new Set());
+
 
 const showToast = useCallback((msg, type = "success") => {
   setToast({ msg, type });
@@ -630,6 +662,10 @@ const BookCountPill = ({ count = 0, showLabel = false }) => {
   // Kademeli Yarış
   const [ladderActive, setLadderActive] = useState(false);
   const [ladderLevel, setLadderLevel] = useState(1); // 1..10
+
+
+
+
   const [ladderAttempts, setLadderAttempts] = useState(0);
   const [ladderCorrect, setLadderCorrect] = useState(0);
   const [showLevelUpPrompt, setShowLevelUpPrompt] = useState(false);
@@ -758,6 +794,42 @@ const fetchSpeedTier = useCallback(async () => {
       else window.location.href = "/login";
     });
   }, []);
+
+
+// Düello SSE — davetleri canlı dinle
+useEffect(() => {
+  if (!user?.id) return;
+
+  const es = openDuelloEventStream({
+    userId: user.id,
+    apiUrl,
+    onInvite: (payload) => {
+      const id = payload?.id || payload?.invite_id || payload?.duello_id;
+      if (id) {
+        if (inviteIdsRef.current.has(id)) return; // aynı daveti iki kez sayma
+        inviteIdsRef.current.add(id);
+      }
+
+      // Sadece sayfa duello DEĞİLSE artır. Sıfırlama tek yerde: route effect.
+if (!location?.pathname?.startsWith?.("/duello")) {
+  setDuelloUnread((c) => Math.min(99, c + 1));
+}
+
+      setLastDuelloInvite(payload || null);
+      try { navigator?.vibrate?.([40, 40, 40]); } catch {}
+      showToast("Yeni düello davetin var! ⚔️", "success");
+    },
+    onPing: () => {},
+    onError: () => {},
+  });
+
+  return () => {
+    try { es?.close?.(); } catch {}
+  };
+  // location.pathname/dependencies: onInvite içindeki kullanımları stabilize etmek için ekledim
+}, [user?.id, apiUrl, location?.pathname, showToast, clearDuelloUnread]);
+
+
 
   /* -------------------- Manifesti yükle -------------------- */
   useEffect(() => {
@@ -1550,6 +1622,56 @@ const peekLadderProgress = useCallback(async () => {
   }, [timeLeft, timerActive]);
   // === FEL0X: TIMER BLOCK END ===
 
+
+// --- Tek başlık effect'i: ekrana göre document.title ayarla ---
+useEffect(() => {
+  const fmt = (n) =>
+    new Intl.NumberFormat("tr-TR").format(Number.isFinite(Number(n)) ? Number(n) : 0);
+
+  let t = "Felox";
+
+  if (mode === "solve") {
+    const total = questions.length;
+    t = ladderActive
+      ? `Kademeli L${ladderLevel} • Soru ${currentIdx + 1}/${total} • ${timeLeft}s | Felox`
+      : `Soru ${currentIdx + 1}/${total} • ${timeLeft}s | Felox`;
+  } else if (mode === "dailySolve") {
+    const idx = Number(dailyStatus?.index ?? 0);
+    const size = Number(dailyStatus?.size ?? 0);
+    t = `Günün Yarışması ${idx}/${size} • ${timeLeft}s | Felox`;
+  } else if (mode === "today") {
+    const rankStr = dailyRank ? ` • #${dailyRank}` : "";
+    t = `Günün Yarışması — Puan ${fmt(dailyPoints)}${rankStr} | Felox`;
+  } else if (mode === "list") {
+    t = "Kategoriler | Felox";
+  } else if (mode === "genius") {
+    t = "Dâhi • Tebrikler! | Felox";
+  } else if (mode === "thankyou") {
+    t = "Teşekkürler | Felox";
+  } else {
+    // panel
+    const name = [user?.ad, user?.soyad].filter(Boolean).join(" ");
+    t = name ? `Panel — ${name} | Felox` : "Panel | Felox";
+  }
+
+  document.title = t;
+}, [
+  mode,
+  currentIdx,
+  questions.length,
+  timeLeft,
+  dailyStatus?.index,
+  dailyStatus?.size,
+  dailyPoints,
+  dailyRank,
+  ladderActive,
+  ladderLevel,
+  user?.ad,
+  user?.soyad,
+]);
+
+
+
   // Son 5 saniyede kısa titreşim (destekleyen cihazlarda)
 useEffect(() => {
   if (!timerActive) return;
@@ -1855,12 +1977,13 @@ if (ladderActive) {
 
   /* -------------------- Çıkış -------------------- */
   const handleLogout = async () => {
-    try {
-      await removeFeloxUser();
-    } finally {
-      window.location.href = "/login";
-    }
-  };
+  try {
+    await removeFeloxUser();
+   localStorage.removeItem("felox_duello_unread");
+  } finally {
+    window.location.href = "/login";
+  }
+};
 
   /* -------------------- "Puanlarım" performansını yükle -------------------- */
   const loadMyPerformance = async () => {
@@ -2065,7 +2188,16 @@ const ladderSessionRate = useMemo(() => {
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
-        <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
+        <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6 relative">
+        {/* Düello davet bildirimi */}
+<div className="absolute top-3 right-3">
+  <NotificationBell
+  count={duelloUnread}
+  onClick={() => navigate("/duello")}
+  title="Düello davetlerin"
+/>
+</div>
+
           <div className="flex flex-col items-center gap-2">
             {/* Avatar + Sağ bilgi bloğu (kitap + hız kademesi) */}
             <div className="flex items-center gap-3 mb-2 w-full">
@@ -2217,12 +2349,17 @@ const ladderSessionRate = useMemo(() => {
 {/* Düello */}
 <Link
   to="/duello"
-  className="block w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-500 hover:to-indigo-800 text-white shadow-lg active:scale-95 transition text-center"
+    className="relative block w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-500 hover:to-indigo-800 text-white shadow-lg active:scale-95 transition text-center"
   title="Düello'ya git"
+  aria-label={duelloUnread > 0 ? `Düello (yeni ${duelloUnread} davet)` : "Düello"}
 >
   <span className="mr-2">⚔️</span> Düello
+  {duelloUnread > 0 && (
+    <span className="ml-2 inline-flex items-center justify-center text-[11px] font-extrabold bg-red-600 text-white rounded-full w-5 h-5 align-middle">
+      {duelloUnread > 99 ? "99+" : duelloUnread}
+    </span>
+  )}
 </Link>
-
 
 
             {/* Genel Puan Tablosu */}
@@ -2390,7 +2527,15 @@ const ladderSessionRate = useMemo(() => {
   if (mode === "list") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
-        <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
+        <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6 relative">
+{/* Düello davet bildirimi */}
+<div className="absolute top-3 right-3">
+  <NotificationBell
+  count={duelloUnread}
+  onClick={() => navigate("/duello")}
+  title="Düello davetlerin"
+/>
+</div>
           <h2 className="text-xl font-extrabold text-cyan-700 text-center mb-3">
             Onaylı Kategoriler
           </h2>
@@ -2428,7 +2573,7 @@ const ladderSessionRate = useMemo(() => {
                       {s.title}
                     </div>
                     <span className="shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-700 border border-cyan-100">
-                      {(s.question_count ?? "?")} soru
+                      {Number(s?.question_count ?? s?.questions_count ?? s?.total_questions ?? s?.count ?? 0) || "?"} soru
                     </span>
                   </div>
                   <div className="mt-2 flex gap-2">
@@ -2528,7 +2673,15 @@ const ladderSessionRate = useMemo(() => {
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
-        <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6">
+        <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6 relative">
+        {/* Düello davet bildirimi */}
+<div className="absolute top-3 right-3">
+  <NotificationBell
+  count={duelloUnread}
+  onClick={() => navigate("/duello")}
+  title="Düello davetlerin"
+/>
+</div>
           <div className="flex flex-col items-center gap-2">
             {/* Avatar + Sağ bilgi bloğu (kitap + hız kademesi) */}
             <div className="flex items-center gap-3 mb-2 w-full">
@@ -2586,7 +2739,6 @@ const ladderSessionRate = useMemo(() => {
   <div className="mt-1">
     <div className="flex items-center gap-2 flex-wrap justify-start text-left">
       <StatusBadge text="Hesaplanıyor…" color="gray" size="sm" variant="ghost" className="!text-cyan-700 !px-0 !py-0 !rounded-none" />
-<StatusBadge text="Hızın hesaplanıyor…" color="gray" size="sm" variant="ghost" className="!text-cyan-700 !px-0 !py-0 !rounded-none" />
       <StatusBadge
         text={`Kitap ipucun ${Number(books) || 0}`}
         color="orange"
@@ -2807,6 +2959,15 @@ if (mode === "solve" && questions.length > 0) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600 px-3">
       <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
+      {/* Düello davet bildirimi */}
+<div className="absolute top-3 right-3">
+  <NotificationBell
+  count={duelloUnread}
+  onClick={() => navigate("/duello")}
+  title="Düello davetlerin"
+/>
+</div>
+
         <h2 className="text-xl font-bold text-cyan-700 mb-3">
           Soru {currentIdx + 1} / {questions.length}
         </h2>
@@ -2963,6 +3124,15 @@ if (mode === "dailySolve" && dailyQuestion) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600 px-3">
       <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
+      {/* Düello davet bildirimi */}
+<div className="absolute top-3 right-3">
+  <NotificationBell
+  count={duelloUnread}
+  onClick={() => navigate("/duello")}
+  title="Düello davetlerin"
+/>
+</div>
+
         <h2 className="text-xl font-bold text-cyan-700 mb-1">Günün Yarışması</h2>
         {scoreFloat != null && (
   <div className={`absolute left-1/2 -translate-x-1/2 top-3 text-2xl font-extrabold ${scoreFloat > 0 ? "text-emerald-600" : "text-red-600"} animate-bounce`}>
@@ -3097,7 +3267,16 @@ if (mode === "dailySolve" && dailyQuestion) {
   if (mode === "genius") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-yellow-400 to-orange-600 px-3">
-        <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center">
+        <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
+{/* Düello davet bildirimi */}
+<div className="absolute top-3 right-3">
+  <NotificationBell
+  count={duelloUnread}
+  onClick={() => navigate("/duello")}
+  title="Düello davetlerin"
+/>
+</div>
+
           <h2 className="text-3xl font-extrabold text-orange-700 mb-3">
             Tamam artık ben sana daha ne sorayım, sen bir dahisin! 🎉
           </h2>
@@ -3119,7 +3298,16 @@ if (mode === "dailySolve" && dailyQuestion) {
   if (mode === "thankyou") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600 px-3">
-        <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center">
+        <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
+{/* Düello davet bildirimi */}
+<div className="absolute top-3 right-3">
+  <NotificationBell
+  count={duelloUnread}
+  onClick={() => navigate("/duello")}
+  title="Düello davetlerin"
+/>
+</div>
+
           <h2 className="text-2xl font-bold text-emerald-700 mb-2">
             TEŞEKKÜRLER
           </h2>
