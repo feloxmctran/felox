@@ -827,7 +827,7 @@ if (!location?.pathname?.startsWith?.("/duello")) {
     try { es?.close?.(); } catch {}
   };
   // location.pathname/dependencies: onInvite içindeki kullanımları stabilize etmek için ekledim
-}, [user?.id, apiUrl, location?.pathname, showToast, clearDuelloUnread]);
+}, [user?.id, location?.pathname, showToast, clearDuelloUnread]);
 
 
 
@@ -1585,102 +1585,6 @@ const peekLadderProgress = useCallback(async () => {
   }, [dailyQuestion, surveyTitleById]);
   // === FEL0X: DAILY TITLE RESOLVER END ===
 
-  /* -------------------- Zamanlayıcı -------------------- */
-  // === FEL0X: TIMER BLOCK START ===
-  useEffect(() => {
-    const hasQuestion =
-      (mode === "solve" && questions.length > 0 && !!questions[currentIdx]) ||
-      (mode === "dailySolve" && !!dailyQuestion);
-
-    if (hasQuestion) {
-      setTimeLeft(24);
-      setTimerActive(true);
-    } else {
-      setTimerActive(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIdx, mode, questions, dailyQuestion]);
-
-  useEffect(() => {
-    if (!timerActive) return;
-
-    if (timeLeft > 0) {
-      const t = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
-      return () => clearTimeout(t);
-    }
-
-    if (timeLeft === 0) {
-      setTimerActive(false);
-
-      const hasQ =
-        (mode === "dailySolve" && !!dailyQuestion) ||
-        (mode === "solve" && !!questions[currentIdx]);
-
-      if (hasQ) handleAnswer("bilmem");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLeft, timerActive]);
-  // === FEL0X: TIMER BLOCK END ===
-
-
-// --- Tek başlık effect'i: ekrana göre document.title ayarla ---
-useEffect(() => {
-  const fmt = (n) =>
-    new Intl.NumberFormat("tr-TR").format(Number.isFinite(Number(n)) ? Number(n) : 0);
-
-  let t = "Felox";
-
-  if (mode === "solve") {
-    const total = questions.length;
-    t = ladderActive
-      ? `Kademeli L${ladderLevel} • Soru ${currentIdx + 1}/${total} • ${timeLeft}s | Felox`
-      : `Soru ${currentIdx + 1}/${total} • ${timeLeft}s | Felox`;
-  } else if (mode === "dailySolve") {
-    const idx = Number(dailyStatus?.index ?? 0);
-    const size = Number(dailyStatus?.size ?? 0);
-    t = `Günün Yarışması ${idx}/${size} • ${timeLeft}s | Felox`;
-  } else if (mode === "today") {
-    const rankStr = dailyRank ? ` • #${dailyRank}` : "";
-    t = `Günün Yarışması — Puan ${fmt(dailyPoints)}${rankStr} | Felox`;
-  } else if (mode === "list") {
-    t = "Kategoriler | Felox";
-  } else if (mode === "genius") {
-    t = "Dâhi • Tebrikler! | Felox";
-  } else if (mode === "thankyou") {
-    t = "Teşekkürler | Felox";
-  } else {
-    // panel
-    const name = [user?.ad, user?.soyad].filter(Boolean).join(" ");
-    t = name ? `Panel — ${name} | Felox` : "Panel | Felox";
-  }
-
-  document.title = t;
-}, [
-  mode,
-  currentIdx,
-  questions.length,
-  timeLeft,
-  dailyStatus?.index,
-  dailyStatus?.size,
-  dailyPoints,
-  dailyRank,
-  ladderActive,
-  ladderLevel,
-  user?.ad,
-  user?.soyad,
-]);
-
-
-
-  // Son 5 saniyede kısa titreşim (destekleyen cihazlarda)
-useEffect(() => {
-  if (!timerActive) return;
-  if (timeLeft > 0 && timeLeft <= 5) {
-    try { navigator?.vibrate?.(50); } catch {}
-  }
-}, [timeLeft, timerActive]);
-
-
   /* -------------------- Cevap işle -------------------- */
   // === FEL0X: ANSWER HANDLERS START ===
   const getSuccessMsg = (puan) => {
@@ -1929,7 +1833,6 @@ if (ladderActive) {
 
 
 
-
   if (currentIdx < questions.length - 1) {
     setCurrentIdx((prev) => prev + 1);
   } else if (ladderActive) {
@@ -1974,6 +1877,52 @@ if (ladderActive) {
 };
 
   // === FEL0X: ANSWER HANDLERS END ===
+
+/* -------------------- Zamanlayıcı -------------------- */
+// === FEL0X: TIMER BLOCK START ===
+useEffect(() => {
+  const hasQuestion =
+    (mode === "solve" && questions.length > 0 && !!questions[currentIdx]) ||
+    (mode === "dailySolve" && !!dailyQuestion);
+
+  if (hasQuestion) {
+    setTimeLeft(24);
+    setTimerActive(true);
+  } else {
+    setTimerActive(false);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [currentIdx, mode, questions, dailyQuestion]);
+
+useEffect(() => {
+  if (!timerActive) return;
+
+  if (timeLeft > 0) {
+    const t = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
+    return () => clearTimeout(t);
+  }
+
+  if (timeLeft === 0) {
+    setTimerActive(false);
+
+    const hasQ =
+      (mode === "dailySolve" && !!dailyQuestion) ||
+      (mode === "solve" && !!questions[currentIdx]);
+
+    if (hasQ) handleAnswer("bilmem");
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [timeLeft, timerActive]);
+// === FEL0X: TIMER BLOCK END ===
+
+// Son 5 saniyede kısa titreşim (destekleyen cihazlarda)
+useEffect(() => {
+  if (!timerActive) return;
+  if (timeLeft > 0 && timeLeft <= 5) {
+    try { navigator?.vibrate?.(50); } catch {}
+  }
+}, [timeLeft, timerActive]);
+
 
   /* -------------------- Çıkış -------------------- */
   const handleLogout = async () => {
@@ -2086,13 +2035,14 @@ if (ladderActive) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePeriod, showLeaderboard]);
 
-  // === FEL0X: LOCALE & DAILY RANK MEMO START ===
-  const nf = useMemo(() => new Intl.NumberFormat("tr-TR"), []);
-  const dailyRank = useMemo(() => {
-    const i = (dailyLeaderboard || []).findIndex(u => String(u?.id) === String(user?.id));
-    return i === -1 ? null : i + 1;
-  }, [dailyLeaderboard, user?.id]);
-  // === FEL0X: LOCALE & DAILY RANK MEMO END ===
+// === FEL0X: LOCALE & DAILY RANK MEMO START ===
+const nf = useMemo(() => new Intl.NumberFormat("tr-TR"), []);
+const dailyRank = useMemo(() => {
+  const i = (dailyLeaderboard || []).findIndex(u => String(u?.id) === String(user?.id));
+  return i === -1 ? null : i + 1;
+}, [dailyLeaderboard, user?.id]);
+// === FEL0X: LOCALE & DAILY RANK MEMO END ===
+
 
 // Kademeli oturum başarı yüzdesi (yalnızca bu seans, bu seviye için)
 const ladderSessionRate = useMemo(() => {
