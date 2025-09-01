@@ -468,6 +468,25 @@ export default function UserPanel() {
 
     // Düello davet sayacı
   const [duelloUnread, setDuelloUnread] = useState(0);
+
+  // Zil açılır menü durumu + dışarı tık/ESC ile kapatma
+const [bellOpen, setBellOpen] = useState(false);
+const bellWrapRef = useRef(null);
+
+useEffect(() => {
+  const onDoc = (e) => {
+    if (!bellWrapRef.current) return;
+    if (!bellWrapRef.current.contains(e.target)) setBellOpen(false);
+  };
+  const onEsc = (e) => { if (e.key === "Escape") setBellOpen(false); };
+  document.addEventListener("click", onDoc);
+  document.addEventListener("keydown", onEsc);
+  return () => {
+    document.removeEventListener("click", onDoc);
+    document.removeEventListener("keydown", onEsc);
+  };
+}, []);
+
   
 
   // açılışta önceki değeri yükle
@@ -482,7 +501,7 @@ useEffect(() => {
   localStorage.setItem("felox_duello_unread", String(duelloUnread));
 }, [duelloUnread]);
 
-  const [lastDuelloInvite, setLastDuelloInvite] = useState(null); // isteğe bağlı: son davet bilgisi
+  const [, setLastDuelloInvite] = useState(null); // isteğe bağlı: son davet bilgisi
 const clearDuelloUnread = useCallback(() => setDuelloUnread(0), []);
 
 // Duello sayfasına girilince rozet SIFIRLAMA — tek gerçek kaynak burası
@@ -827,7 +846,7 @@ if (!location?.pathname?.startsWith?.("/duello")) {
     try { es?.close?.(); } catch {}
   };
   // location.pathname/dependencies: onInvite içindeki kullanımları stabilize etmek için ekledim
-}, [user?.id, apiUrl, location?.pathname, showToast, clearDuelloUnread]);
+}, [user?.id, location?.pathname, showToast, clearDuelloUnread]);
 
 
 
@@ -2146,12 +2165,40 @@ const ladderSessionRate = useMemo(() => {
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6 relative">
         {/* Düello davet bildirimi */}
-<div className="absolute top-3 right-3">
+<div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
-  count={duelloUnread}
-  onClick={() => navigate("/duello")}
-  title="Düello davetlerin"
-/>
+    count={duelloUnread}
+    onClick={() => setBellOpen((v) => !v)}
+    title="Düello davetlerin"
+  />
+  {bellOpen && (
+    <div className="mt-2 w-64 bg-white rounded-2xl shadow-2xl border p-2 z-[70]">
+      <div className="px-2 py-1.5 text-sm">
+        {duelloUnread > 0 ? (
+          <span className="font-semibold text-emerald-700">
+            {duelloUnread} yeni davet
+          </span>
+        ) : (
+          <span className="text-gray-500">Yeni davet yok</span>
+        )}
+      </div>
+      <div className="border-t my-1" />
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm font-semibold"
+        onClick={() => { setBellOpen(false); navigate("/duello"); }}
+      >
+        Düello’ya git
+      </button>
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm disabled:opacity-40"
+        onClick={() => { clearDuelloUnread(); setBellOpen(false); }}
+        disabled={duelloUnread === 0}
+        title={duelloUnread === 0 ? "Okunacak davet yok" : "Hepsini okundu say"}
+      >
+        Hepsini okundu say
+      </button>
+    </div>
+  )}
 </div>
 
           <div className="flex flex-col items-center gap-2">
@@ -2488,12 +2535,40 @@ const ladderSessionRate = useMemo(() => {
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6 relative">
 {/* Düello davet bildirimi */}
-<div className="absolute top-3 right-3">
+<div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
-  count={duelloUnread}
-  onClick={() => navigate("/duello")}
-  title="Düello davetlerin"
-/>
+    count={duelloUnread}
+    onClick={() => setBellOpen((v) => !v)}
+    title="Düello davetlerin"
+  />
+  {bellOpen && (
+    <div className="mt-2 w-64 bg-white rounded-2xl shadow-2xl border p-2 z-[70]">
+      <div className="px-2 py-1.5 text-sm">
+        {duelloUnread > 0 ? (
+          <span className="font-semibold text-emerald-700">
+            {duelloUnread} yeni davet
+          </span>
+        ) : (
+          <span className="text-gray-500">Yeni davet yok</span>
+        )}
+      </div>
+      <div className="border-t my-1" />
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm font-semibold"
+        onClick={() => { setBellOpen(false); navigate("/duello"); }}
+      >
+        Düello’ya git
+      </button>
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm disabled:opacity-40"
+        onClick={() => { clearDuelloUnread(); setBellOpen(false); }}
+        disabled={duelloUnread === 0}
+        title={duelloUnread === 0 ? "Okunacak davet yok" : "Hepsini okundu say"}
+      >
+        Hepsini okundu say
+      </button>
+    </div>
+  )}
 </div>
           <h2 className="text-xl font-extrabold text-cyan-700 text-center mb-3">
             Onaylı Kategoriler
@@ -2637,12 +2712,40 @@ const ladderSessionRate = useMemo(() => {
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
         <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-md p-6 relative">
         {/* Düello davet bildirimi */}
-<div className="absolute top-3 right-3">
+<div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
-  count={duelloUnread}
-  onClick={() => navigate("/duello")}
-  title="Düello davetlerin"
-/>
+    count={duelloUnread}
+    onClick={() => setBellOpen((v) => !v)}
+    title="Düello davetlerin"
+  />
+  {bellOpen && (
+    <div className="mt-2 w-64 bg-white rounded-2xl shadow-2xl border p-2 z-[70]">
+      <div className="px-2 py-1.5 text-sm">
+        {duelloUnread > 0 ? (
+          <span className="font-semibold text-emerald-700">
+            {duelloUnread} yeni davet
+          </span>
+        ) : (
+          <span className="text-gray-500">Yeni davet yok</span>
+        )}
+      </div>
+      <div className="border-t my-1" />
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm font-semibold"
+        onClick={() => { setBellOpen(false); navigate("/duello"); }}
+      >
+        Düello’ya git
+      </button>
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm disabled:opacity-40"
+        onClick={() => { clearDuelloUnread(); setBellOpen(false); }}
+        disabled={duelloUnread === 0}
+        title={duelloUnread === 0 ? "Okunacak davet yok" : "Hepsini okundu say"}
+      >
+        Hepsini okundu say
+      </button>
+    </div>
+  )}
 </div>
           <div className="flex flex-col items-center gap-2">
             {/* Avatar + Sağ bilgi bloğu (kitap + hız kademesi) */}
@@ -2925,12 +3028,40 @@ if (mode === "solve" && questions.length > 0) {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600 px-3">
       <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
       {/* Düello davet bildirimi */}
-<div className="absolute top-3 right-3">
+<div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
-  count={duelloUnread}
-  onClick={() => navigate("/duello")}
-  title="Düello davetlerin"
-/>
+    count={duelloUnread}
+    onClick={() => setBellOpen((v) => !v)}
+    title="Düello davetlerin"
+  />
+  {bellOpen && (
+    <div className="mt-2 w-64 bg-white rounded-2xl shadow-2xl border p-2 z-[70]">
+      <div className="px-2 py-1.5 text-sm">
+        {duelloUnread > 0 ? (
+          <span className="font-semibold text-emerald-700">
+            {duelloUnread} yeni davet
+          </span>
+        ) : (
+          <span className="text-gray-500">Yeni davet yok</span>
+        )}
+      </div>
+      <div className="border-t my-1" />
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm font-semibold"
+        onClick={() => { setBellOpen(false); navigate("/duello"); }}
+      >
+        Düello’ya git
+      </button>
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm disabled:opacity-40"
+        onClick={() => { clearDuelloUnread(); setBellOpen(false); }}
+        disabled={duelloUnread === 0}
+        title={duelloUnread === 0 ? "Okunacak davet yok" : "Hepsini okundu say"}
+      >
+        Hepsini okundu say
+      </button>
+    </div>
+  )}
 </div>
 
         <h2 className="text-xl font-bold text-cyan-700 mb-3">
@@ -3093,12 +3224,40 @@ if (mode === "dailySolve" && dailyQuestion) {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600 px-3">
       <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
       {/* Düello davet bildirimi */}
-<div className="absolute top-3 right-3">
+<div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
-  count={duelloUnread}
-  onClick={() => navigate("/duello")}
-  title="Düello davetlerin"
-/>
+    count={duelloUnread}
+    onClick={() => setBellOpen((v) => !v)}
+    title="Düello davetlerin"
+  />
+  {bellOpen && (
+    <div className="mt-2 w-64 bg-white rounded-2xl shadow-2xl border p-2 z-[70]">
+      <div className="px-2 py-1.5 text-sm">
+        {duelloUnread > 0 ? (
+          <span className="font-semibold text-emerald-700">
+            {duelloUnread} yeni davet
+          </span>
+        ) : (
+          <span className="text-gray-500">Yeni davet yok</span>
+        )}
+      </div>
+      <div className="border-t my-1" />
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm font-semibold"
+        onClick={() => { setBellOpen(false); navigate("/duello"); }}
+      >
+        Düello’ya git
+      </button>
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm disabled:opacity-40"
+        onClick={() => { clearDuelloUnread(); setBellOpen(false); }}
+        disabled={duelloUnread === 0}
+        title={duelloUnread === 0 ? "Okunacak davet yok" : "Hepsini okundu say"}
+      >
+        Hepsini okundu say
+      </button>
+    </div>
+  )}
 </div>
 
         <h2 className="text-xl font-bold text-cyan-700 mb-1">Günün Yarışması</h2>
@@ -3237,12 +3396,40 @@ if (mode === "dailySolve" && dailyQuestion) {
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-yellow-400 to-orange-600 px-3">
         <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
 {/* Düello davet bildirimi */}
-<div className="absolute top-3 right-3">
+<div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
-  count={duelloUnread}
-  onClick={() => navigate("/duello")}
-  title="Düello davetlerin"
-/>
+    count={duelloUnread}
+    onClick={() => setBellOpen((v) => !v)}
+    title="Düello davetlerin"
+  />
+  {bellOpen && (
+    <div className="mt-2 w-64 bg-white rounded-2xl shadow-2xl border p-2 z-[70]">
+      <div className="px-2 py-1.5 text-sm">
+        {duelloUnread > 0 ? (
+          <span className="font-semibold text-emerald-700">
+            {duelloUnread} yeni davet
+          </span>
+        ) : (
+          <span className="text-gray-500">Yeni davet yok</span>
+        )}
+      </div>
+      <div className="border-t my-1" />
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm font-semibold"
+        onClick={() => { setBellOpen(false); navigate("/duello"); }}
+      >
+        Düello’ya git
+      </button>
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm disabled:opacity-40"
+        onClick={() => { clearDuelloUnread(); setBellOpen(false); }}
+        disabled={duelloUnread === 0}
+        title={duelloUnread === 0 ? "Okunacak davet yok" : "Hepsini okundu say"}
+      >
+        Hepsini okundu say
+      </button>
+    </div>
+  )}
 </div>
 
           <h2 className="text-3xl font-extrabold text-orange-700 mb-3">
@@ -3271,12 +3458,40 @@ if (mode === "dailySolve" && dailyQuestion) {
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-600 px-3">
         <div className="bg-white/95 rounded-3xl shadow-2xl p-6 w-full max-w-md text-center relative">
 {/* Düello davet bildirimi */}
-<div className="absolute top-3 right-3">
+<div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
-  count={duelloUnread}
-  onClick={() => navigate("/duello")}
-  title="Düello davetlerin"
-/>
+    count={duelloUnread}
+    onClick={() => setBellOpen((v) => !v)}
+    title="Düello davetlerin"
+  />
+  {bellOpen && (
+    <div className="mt-2 w-64 bg-white rounded-2xl shadow-2xl border p-2 z-[70]">
+      <div className="px-2 py-1.5 text-sm">
+        {duelloUnread > 0 ? (
+          <span className="font-semibold text-emerald-700">
+            {duelloUnread} yeni davet
+          </span>
+        ) : (
+          <span className="text-gray-500">Yeni davet yok</span>
+        )}
+      </div>
+      <div className="border-t my-1" />
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm font-semibold"
+        onClick={() => { setBellOpen(false); navigate("/duello"); }}
+      >
+        Düello’ya git
+      </button>
+      <button
+        className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-100 text-sm disabled:opacity-40"
+        onClick={() => { clearDuelloUnread(); setBellOpen(false); }}
+        disabled={duelloUnread === 0}
+        title={duelloUnread === 0 ? "Okunacak davet yok" : "Hepsini okundu say"}
+      >
+        Hepsini okundu say
+      </button>
+    </div>
+  )}
 </div>
 
           <h2 className="text-2xl font-bold text-emerald-700 mb-2">
