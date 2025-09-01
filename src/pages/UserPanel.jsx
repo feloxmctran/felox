@@ -470,6 +470,21 @@ export default function UserPanel() {
     // Düello davet sayacı
   const [duelloUnread, setDuelloUnread] = useState(0);
 
+
+  // Toast (seri bonus bildirimi)
+const [toast, setToast] = useState(null); // { msg, type: 'success' | 'error' }
+const toastTimeoutRef = useRef(null);
+const inviteIdsRef = useRef(new Set());
+// İlk poll’de catchup yaparken tost göstermemek için
+const firstPollDoneRef = useRef(false);
+
+
+const showToast = useCallback((msg, type = "success") => {
+  setToast({ msg, type });
+  if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+  toastTimeoutRef.current = setTimeout(() => setToast(null), 3000);
+}, []);
+
   // Zil açılır menü durumu + dışarı tık/ESC ile kapatma
 const [bellOpen, setBellOpen] = useState(false);
 const bellWrapRef = useRef(null);
@@ -517,7 +532,7 @@ const countPendingInvites = useCallback(async () => {
                : Array.isArray(d) ? d
                : [];
 
-    // "pending" sayımı: kabul/ret/iptal/timeout/expired olmayanların tamamı
+    // "pending" sayımı
     const PENDING_STATES = new Set(["pending", "new", "sent", "waiting", "invited", "open"]);
     const CLOSED_STATES  = new Set(["accepted", "rejected", "cancelled", "canceled", "expired", "timeout", "closed", "done"]);
 
@@ -525,23 +540,48 @@ const countPendingInvites = useCallback(async () => {
       const stRaw = String(x?.status ?? x?.state ?? x?.invite_status ?? "").toLowerCase().trim();
       const responded =
         x?.responded_at ?? x?.respondedAt ??
-        x?.accepted_at  ?? x?.rejected_at ?? x?.cancelled_at ?? x?.canceled_at ??
-        null;
+        x?.accepted_at  ?? x?.rejected_at ?? x?.cancelled_at ?? x?.canceled_at ?? null;
 
       if (stRaw) {
         if (CLOSED_STATES.has(stRaw)) return false;
         if (PENDING_STATES.has(stRaw)) return true;
       }
-      // status alanı yoksa: responded yoksa pending say
       return responded == null;
     });
 
+    // === YENİ: “yeni gelen” algılama (polling tarafında tost göstermek için)
+    const idOf = (x) => x?.id ?? x?.invite_id ?? x?.duello_id ?? x?._id ?? null;
+    let newOnes = 0;
+    for (const it of pending) {
+      const id = idOf(it);
+      if (id != null && !inviteIdsRef.current.has(id)) {
+        inviteIdsRef.current.add(id);
+        newOnes++;
+      }
+    }
+
     setDuelloUnread(Math.min(99, pending.length));
-    console.info("[Duel] inbox:", { total: list.length, pending: pending.length });
+
+    // İlk poll’de catchup yaparken tost gösterme; sonrakilerde yeni varsa göster
+    if (
+      firstPollDoneRef.current &&
+      newOnes > 0 &&
+      !location?.pathname?.startsWith?.("/duello")
+    ) {
+      try { navigator?.vibrate?.([40, 40, 40]); } catch {}
+      showToast(
+        newOnes === 1 ? "Yeni düello davetin var! ⚔️" : `${newOnes} yeni düello davetin var! ⚔️`,
+        "success"
+      );
+    }
+    firstPollDoneRef.current = true;
+
+    console.info("[Duel] inbox:", { total: list.length, pending: pending.length, newOnes });
   } catch (e) {
     console.warn("[Duel] inbox fetch failed", e);
   }
-}, [user?.id, apiUrl]);
+}, [user?.id, apiUrl, showToast, location?.pathname]);
+
 
 // Düello davet sayısı fallback — 12 sn'de bir tazele (SSE gelmezse)
 useEffect(() => {
@@ -599,17 +639,6 @@ const [scoreFloat, setScoreFloat] = useState(null); // number | null
 
   
 
-  // Toast (seri bonus bildirimi)
-const [toast, setToast] = useState(null); // { msg, type: 'success' | 'error' }
-const toastTimeoutRef = useRef(null);
-const inviteIdsRef = useRef(new Set());
-
-
-const showToast = useCallback((msg, type = "success") => {
-  setToast({ msg, type });
-  if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-  toastTimeoutRef.current = setTimeout(() => setToast(null), 3000);
-}, []);
 
 
   // Puanlarım (performans)
