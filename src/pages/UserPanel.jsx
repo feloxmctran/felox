@@ -503,6 +503,30 @@ useEffect(() => {
 
   const [, setLastDuelloInvite] = useState(null); // isteğe bağlı: son davet bilgisi
 const clearDuelloUnread = useCallback(() => setDuelloUnread(0), []);
+// Bekleyen davet sayısını (pending) sunucudan say
+const countPendingInvites = useCallback(async () => {
+  if (!user?.id) return;
+  try {
+    const r = await fetch(`${apiUrl}/api/duello/inbox/${user.id}`);
+    const d = await r.json();
+    const list = Array.isArray(d?.inbox) ? d.inbox
+               : Array.isArray(d?.invites) ? d.invites
+               : Array.isArray(d) ? d
+               : [];
+
+    // pending say: status/state yoksa responded_at da yoksa "pending" say
+    const pending = list.filter((x) => {
+      const s = String(x?.status ?? x?.state ?? "").toLowerCase();
+      const responded = x?.responded_at ?? x?.respondedAt ?? x?.accepted_at ?? x?.rejected_at;
+      return s === "pending" || (!s && responded == null);
+    });
+
+    setDuelloUnread(Math.min(99, pending.length));
+  } catch {
+    // sessiz: ağ hatası
+  }
+}, [user?.id]);
+
 
 // Duello sayfasına girilince rozet SIFIRLAMA — tek gerçek kaynak burası
 useEffect(() => {
