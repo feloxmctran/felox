@@ -225,7 +225,7 @@ const RANKS = [
   { name: "Beyin Fırtınası",   min: 2800,      next: 3600 },
   { name: "Bilgi Şampiyonu",   min: 3600,      next: 4600 },
   { name: "Ustalık Seviyesi",  min: 4600,      next: 5400 },
-  { name: "Efsane Yarışmacı",  min: 5400,      next: 6400 },
+  { name: "Efsane Yarışmacı",   min: 5400,      next: 6400 },
   { name: "Bilgelik Ustası",   min: 6400,      next: 7400 },
   { name: "Strateji Üstadı",   min: 7400,      next: 8400 },
   { name: "Zeka Fırtınası",    min: 8400,      next: 9600 },
@@ -827,7 +827,7 @@ if (!location?.pathname?.startsWith?.("/duello")) {
     try { es?.close?.(); } catch {}
   };
   // location.pathname/dependencies: onInvite içindeki kullanımları stabilize etmek için ekledim
-}, [user?.id, location?.pathname, showToast, clearDuelloUnread]);
+}, [user?.id, apiUrl, location?.pathname, showToast, clearDuelloUnread]);
 
 
 
@@ -1585,6 +1585,57 @@ const peekLadderProgress = useCallback(async () => {
   }, [dailyQuestion, surveyTitleById]);
   // === FEL0X: DAILY TITLE RESOLVER END ===
 
+  /* -------------------- Zamanlayıcı -------------------- */
+  // === FEL0X: TIMER BLOCK START ===
+  useEffect(() => {
+    const hasQuestion =
+      (mode === "solve" && questions.length > 0 && !!questions[currentIdx]) ||
+      (mode === "dailySolve" && !!dailyQuestion);
+
+    if (hasQuestion) {
+      setTimeLeft(24);
+      setTimerActive(true);
+    } else {
+      setTimerActive(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIdx, mode, questions, dailyQuestion]);
+
+  useEffect(() => {
+    if (!timerActive) return;
+
+    if (timeLeft > 0) {
+      const t = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
+      return () => clearTimeout(t);
+    }
+
+    if (timeLeft === 0) {
+      setTimerActive(false);
+
+      const hasQ =
+        (mode === "dailySolve" && !!dailyQuestion) ||
+        (mode === "solve" && !!questions[currentIdx]);
+
+      if (hasQ) handleAnswer("bilmem");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLeft, timerActive]);
+  // === FEL0X: TIMER BLOCK END ===
+
+
+
+
+
+
+  // Son 5 saniyede kısa titreşim (destekleyen cihazlarda)
+useEffect(() => {
+  if (!timerActive) return;
+  if (timeLeft > 0 && timeLeft <= 5) {
+    try { navigator?.vibrate?.(50); } catch {}
+  }
+}, [timeLeft, timerActive]);
+
+
   /* -------------------- Cevap işle -------------------- */
   // === FEL0X: ANSWER HANDLERS START ===
   const getSuccessMsg = (puan) => {
@@ -1833,6 +1884,7 @@ if (ladderActive) {
 
 
 
+
   if (currentIdx < questions.length - 1) {
     setCurrentIdx((prev) => prev + 1);
   } else if (ladderActive) {
@@ -1877,52 +1929,6 @@ if (ladderActive) {
 };
 
   // === FEL0X: ANSWER HANDLERS END ===
-
-/* -------------------- Zamanlayıcı -------------------- */
-// === FEL0X: TIMER BLOCK START ===
-useEffect(() => {
-  const hasQuestion =
-    (mode === "solve" && questions.length > 0 && !!questions[currentIdx]) ||
-    (mode === "dailySolve" && !!dailyQuestion);
-
-  if (hasQuestion) {
-    setTimeLeft(24);
-    setTimerActive(true);
-  } else {
-    setTimerActive(false);
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [currentIdx, mode, questions, dailyQuestion]);
-
-useEffect(() => {
-  if (!timerActive) return;
-
-  if (timeLeft > 0) {
-    const t = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
-    return () => clearTimeout(t);
-  }
-
-  if (timeLeft === 0) {
-    setTimerActive(false);
-
-    const hasQ =
-      (mode === "dailySolve" && !!dailyQuestion) ||
-      (mode === "solve" && !!questions[currentIdx]);
-
-    if (hasQ) handleAnswer("bilmem");
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [timeLeft, timerActive]);
-// === FEL0X: TIMER BLOCK END ===
-
-// Son 5 saniyede kısa titreşim (destekleyen cihazlarda)
-useEffect(() => {
-  if (!timerActive) return;
-  if (timeLeft > 0 && timeLeft <= 5) {
-    try { navigator?.vibrate?.(50); } catch {}
-  }
-}, [timeLeft, timerActive]);
-
 
   /* -------------------- Çıkış -------------------- */
   const handleLogout = async () => {
@@ -2468,6 +2474,9 @@ const ladderSessionRate = useMemo(() => {
               </div>
             </div>
           )}
+
+          {/* Toast (panel) */}
+          <Toast toast={toast} />
         </div>
       </div>
     );
@@ -2610,6 +2619,9 @@ const ladderSessionRate = useMemo(() => {
             error={myPerfError}
             data={myPerf}
           />
+
+          {/* Toast (list) */}
+          <Toast toast={toast} />
         </div>
       </div>
     );
@@ -2895,6 +2907,9 @@ const ladderSessionRate = useMemo(() => {
     ← Panele Dön
   </button>
 </div>
+
+          {/* Toast (today) */}
+          <Toast toast={toast} />
         </div>
       </div>
     );
@@ -3058,6 +3073,9 @@ if (mode === "solve" && questions.length > 0) {
             {showStars && <Stars count={starsCount} />}
           </div>
         )}
+
+        {/* Toast (solve) */}
+        <Toast toast={toast} />
       </div>
     </div>
   );
@@ -3239,6 +3257,9 @@ if (mode === "dailySolve" && dailyQuestion) {
           >
             Panele Dön
           </button>
+
+          {/* Toast (genius) */}
+          <Toast toast={toast} />
         </div>
       </div>
     );
@@ -3288,6 +3309,9 @@ if (mode === "dailySolve" && dailyQuestion) {
           >
             Panele Dön
           </button>
+
+          {/* Toast (thankyou) */}
+          <Toast toast={toast} />
         </div>
       </div>
     );
@@ -3307,6 +3331,8 @@ if (mode === "dailySolve" && dailyQuestion) {
           Panele Dön
         </button>
       </div>
+      {/* Toast (fallback) */}
+      <Toast toast={toast} />
     </div>
   );
 }
