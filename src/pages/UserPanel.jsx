@@ -178,11 +178,11 @@ const Toast = ({ toast }) => {
   if (!toast) return null;
   const base = toast.type === "error" ? "bg-red-600" : "bg-emerald-600";
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60]">
-      <div className={`px-4 py-2 rounded-xl shadow-lg text-white text-sm font-semibold ${base}`}>
-        {toast.msg}
-      </div>
-    </div>
+    <div className="fixed top-[calc(env(safe-area-inset-top)+12px)] right-3 z-[90] pointer-events-none">
+  <div className={`px-4 py-2 rounded-xl shadow-lg text-white text-sm font-semibold pointer-events-auto ${base}`}>
+    {toast.msg}
+  </div>
+</div>
   );
 };
 
