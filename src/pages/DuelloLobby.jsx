@@ -15,6 +15,15 @@ import {
   getUserCode as apiGetUserCode,
 } from "../api/duello";
 
+// Görünürlük etiket çevirisi (ekranda Türkçe göster, backend değerleri aynı kalsın)
+const VISIBILITY_TR = {
+  public:  "Herkese Açık",
+  friends: "Sadece Arkadaşlar",
+  none:    "Gizli",
+};
+const fmtVisibility = (v) => VISIBILITY_TR[String(v || "").toLowerCase()] || v || "";
+
+
 /* === Felox universal user storage (UserPanel ile aynı mantık) === */
 async function getFeloxUser() {
   let userStr = localStorage.getItem("felox_user");
@@ -392,18 +401,21 @@ const act = async (id, action) => {
             <div className="text-sm mb-1">Görünürlük:</div>
             <div className="flex gap-2 flex-wrap">
               {["public", "friends", "none"].map((v) => (
-                <button
-                  key={v}
-                  onClick={() => changeVisibility(v)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${
-                    visibility === v
-                      ? "bg-cyan-600 text-white border-cyan-600"
-                      : "bg-white text-cyan-700 border-cyan-200 hover:border-cyan-400"
-                  }`}
-                >
-                  {v}
-                </button>
-              ))}
+  <button
+    key={v}
+    onClick={() => changeVisibility(v)}
+    className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${
+      visibility === v
+        ? "bg-cyan-600 text-white border-cyan-600"
+        : "bg-white text-cyan-700 border-cyan-200 hover:border-cyan-400"
+    }`}
+    title={fmtVisibility(v)}
+    aria-label={fmtVisibility(v)}
+  >
+    {fmtVisibility(v)}
+  </button>
+))}
+
             </div>
           </div>
         </div>
