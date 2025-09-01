@@ -275,6 +275,7 @@ const barFillClassByRank = (rankName = "") => {
 const ProgressBar = ({ pct, colorClass }) => {
   const [w, setW] = React.useState(0);
 
+ 
   // ilk render ve her pct değişiminde yumuşak geçiş
   React.useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -504,28 +505,52 @@ useEffect(() => {
   const [, setLastDuelloInvite] = useState(null); // isteğe bağlı: son davet bilgisi
 const clearDuelloUnread = useCallback(() => setDuelloUnread(0), []);
 // Bekleyen davet sayısını (pending) sunucudan say
+// Bekleyen davet sayısını (pending) sunucudan say — farklı alan adlarına dayanıklı
 const countPendingInvites = useCallback(async () => {
   if (!user?.id) return;
   try {
     const r = await fetch(`${apiUrl}/api/duello/inbox/${user.id}`);
     const d = await r.json();
+
     const list = Array.isArray(d?.inbox) ? d.inbox
                : Array.isArray(d?.invites) ? d.invites
                : Array.isArray(d) ? d
                : [];
 
-    // pending say: status/state yoksa responded_at da yoksa "pending" say
+    // "pending" sayımı: kabul/ret/iptal/timeout/expired olmayanların tamamı
+    const PENDING_STATES = new Set(["pending", "new", "sent", "waiting", "invited", "open"]);
+    const CLOSED_STATES  = new Set(["accepted", "rejected", "cancelled", "canceled", "expired", "timeout", "closed", "done"]);
+
     const pending = list.filter((x) => {
-      const s = String(x?.status ?? x?.state ?? "").toLowerCase();
-      const responded = x?.responded_at ?? x?.respondedAt ?? x?.accepted_at ?? x?.rejected_at;
-      return s === "pending" || (!s && responded == null);
+      const stRaw = String(x?.status ?? x?.state ?? x?.invite_status ?? "").toLowerCase().trim();
+      const responded =
+        x?.responded_at ?? x?.respondedAt ??
+        x?.accepted_at  ?? x?.rejected_at ?? x?.cancelled_at ?? x?.canceled_at ??
+        null;
+
+      if (stRaw) {
+        if (CLOSED_STATES.has(stRaw)) return false;
+        if (PENDING_STATES.has(stRaw)) return true;
+      }
+      // status alanı yoksa: responded yoksa pending say
+      return responded == null;
     });
 
     setDuelloUnread(Math.min(99, pending.length));
-  } catch {
-    // sessiz: ağ hatası
+    console.info("[Duel] inbox:", { total: list.length, pending: pending.length });
+  } catch (e) {
+    console.warn("[Duel] inbox fetch failed", e);
   }
-}, [user?.id]);
+}, [user?.id, apiUrl]);
+
+// Düello davet sayısı fallback — 12 sn'de bir tazele (SSE gelmezse)
+useEffect(() => {
+  if (!user?.id) return;
+  // ilk yüklemede bir kez çek
+  countPendingInvites();
+  const t = setInterval(countPendingInvites, 12000);
+  return () => clearInterval(t);
+}, [user?.id, countPendingInvites]);
 
 
 // Duello sayfasına girilince rozet SIFIRLAMA — tek gerçek kaynak burası
@@ -853,10 +878,11 @@ useEffect(() => {
         inviteIdsRef.current.add(id);
       }
 
-      // Sadece sayfa duello DEĞİLSE artır. Sıfırlama tek yerde: route effect.
+      // Sayfa /duello değilse sunucudan gerçek pending sayısını çek
 if (!location?.pathname?.startsWith?.("/duello")) {
-  setDuelloUnread((c) => Math.min(99, c + 1));
+  countPendingInvites();
 }
+
 
       setLastDuelloInvite(payload || null);
       try { navigator?.vibrate?.([40, 40, 40]); } catch {}
@@ -870,7 +896,8 @@ if (!location?.pathname?.startsWith?.("/duello")) {
     try { es?.close?.(); } catch {}
   };
   // location.pathname/dependencies: onInvite içindeki kullanımları stabilize etmek için ekledim
-}, [user?.id, location?.pathname, showToast, clearDuelloUnread]);
+}, [user?.id, location?.pathname, showToast, clearDuelloUnread, countPendingInvites]);
+
 
 
 
@@ -2192,7 +2219,8 @@ const ladderSessionRate = useMemo(() => {
 <div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
     count={duelloUnread}
-    onClick={() => setBellOpen((v) => !v)}
+    onClick={() => { setBellOpen(v => !v); countPendingInvites(); }}
+
     title="Düello davetlerin"
   />
   {bellOpen && (
@@ -2562,7 +2590,7 @@ const ladderSessionRate = useMemo(() => {
 <div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
     count={duelloUnread}
-    onClick={() => setBellOpen((v) => !v)}
+    onClick={() => { setBellOpen(v => !v); countPendingInvites(); }}
     title="Düello davetlerin"
   />
   {bellOpen && (
@@ -2739,7 +2767,8 @@ const ladderSessionRate = useMemo(() => {
 <div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
     count={duelloUnread}
-    onClick={() => setBellOpen((v) => !v)}
+    onClick={() => { setBellOpen(v => !v); countPendingInvites(); }}
+
     title="Düello davetlerin"
   />
   {bellOpen && (
@@ -3055,7 +3084,8 @@ if (mode === "solve" && questions.length > 0) {
 <div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
     count={duelloUnread}
-    onClick={() => setBellOpen((v) => !v)}
+    onClick={() => { setBellOpen(v => !v); countPendingInvites(); }}
+
     title="Düello davetlerin"
   />
   {bellOpen && (
@@ -3251,7 +3281,8 @@ if (mode === "dailySolve" && dailyQuestion) {
 <div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
     count={duelloUnread}
-    onClick={() => setBellOpen((v) => !v)}
+    onClick={() => { setBellOpen(v => !v); countPendingInvites(); }}
+
     title="Düello davetlerin"
   />
   {bellOpen && (
@@ -3423,7 +3454,8 @@ if (mode === "dailySolve" && dailyQuestion) {
 <div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
     count={duelloUnread}
-    onClick={() => setBellOpen((v) => !v)}
+    onClick={() => { setBellOpen(v => !v); countPendingInvites(); }}
+
     title="Düello davetlerin"
   />
   {bellOpen && (
@@ -3485,7 +3517,7 @@ if (mode === "dailySolve" && dailyQuestion) {
 <div ref={bellWrapRef} className="absolute top-3 right-3">
   <NotificationBell
     count={duelloUnread}
-    onClick={() => setBellOpen((v) => !v)}
+    onClick={() => { setBellOpen(v => !v); countPendingInvites(); }}
     title="Düello davetlerin"
   />
   {bellOpen && (
