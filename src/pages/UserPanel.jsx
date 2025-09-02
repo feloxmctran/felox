@@ -134,6 +134,23 @@ const Stars = ({ count = 1 }) => (
   </div>
 );
 
+
+// --- Güvenli normalize: NFD + combining marks temizleme + TR özel eşlemeler ---
+function safeNormalize(s = "") {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // diakritikleri sil
+    .replace(/ı/g, "i")
+    .replace(/i̇/g, "i")
+    .replace(/ş/g, "s")
+    .replace(/ğ/g, "g")
+    .replace(/ç/g, "c")
+    .replace(/ö/g, "o")
+    .replace(/ü/g, "u")
+    .replace(/â/g, "a");
+}
+
+
 // === FEL0X: STARS COMPONENT END ===
 
 /* -------------------- Küçük yardımcı UI bileşenleri -------------------- */
@@ -188,20 +205,18 @@ const Toast = ({ toast }) => {
 
 
 /* Hız kademesi görünümü (label + renk) — diakritiklere dayanıklı */
+/* Hız kademesi görünümü (label + renk) — diakritiklere dayanıklı */
 const tierMeta = (t) => {
-  const key = String(t || "")
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/\p{Diacritic}/gu, ""); // â -> a, etc.
-
+  const key = safeNormalize(String(t || "").toLowerCase());
   switch (key) {
     case "alim":      return { label: "Çabuk karar veren", color: "emerald" };
-    case "cesur":     return { label: "Cesur",     color: "orange"  };
-    case "tedbirli":  return { label: "Tedbirli",  color: "blue"    };
-    case "garantici": return { label: "Garantici", color: "gray"    };
-    default:          return { label: null,        color: "gray"    };
+    case "cesur":     return { label: "Cesur",             color: "orange"  };
+    case "tedbirli":  return { label: "Tedbirli",          color: "blue"    };
+    case "garantici": return { label: "Garantici",         color: "gray"    };
+    default:          return { label: null,                color: "gray"    };
   }
 };
+
 
 /* === TIER HEADING (Cesur başlığı) === */
 const TierHeading = ({ tier }) => {
@@ -337,9 +352,7 @@ const parseSpeedTier = (payload) => {
 
   // tier adını normalize et (Âlim/âlim/ALIM -> 'alim')
   const rawTier = src.tier ?? src.tier_name ?? src.level ?? src.name ?? null;
-  const tier = rawTier
-    ? rawTier.toString().toLowerCase().normalize("NFKD").replace(/\p{Diacritic}/gu, "")
-    : null;
+  const tier = rawTier ? safeNormalize(String(rawTier).toLowerCase()) : null;
 
   const num = (v) => {
     const n = Number(v);
@@ -864,20 +877,7 @@ const fetchSpeedTier = useCallback(async () => {
   };
 
   const gender = useMemo(() => {
-    const raw = String(user?.cinsiyet ?? "")
-      .toLowerCase()
-      .trim()
-      .normalize("NFKD")
-      .replace(/\p{Diacritic}/gu, "");
-    const s = raw
-      .replace(/ı/g, "i")
-      .replace(/i̇/g, "i")
-      .replace(/ş/g, "s")
-      .replace(/ğ/g, "g")
-      .replace(/ç/g, "c")
-      .replace(/ö/g, "o")
-      .replace(/ü/g, "u")
-      .replace(/â/g, "a");
+    const s = safeNormalize(String(user?.cinsiyet ?? "").toLowerCase().trim());
 
     if (/(^|[\s_/.-])(erkek|bay|male|man)([\s_/.-]|$)/.test(s)) return "male";
     if (/(^|[\s_/.-])(kadin|bayan|female|woman)([\s_/.-]|$)/.test(s)) return "female";

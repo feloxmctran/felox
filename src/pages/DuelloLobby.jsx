@@ -143,6 +143,20 @@ const autoOnceRef = useRef(false); // URL'den otomatik daveti 1 kez çalıştır
   const [outgoing, setOutgoing] = useState([]);
   const [listsLoading, setListsLoading] = useState(false);
 
+  // Son oynadıklarım (incoming/outgoing'dan türetilir, en fazla 3 kişi)
+const recentOpps = useMemo(() => {
+  const acc = [];
+  const push = (code, ad, soyad) => {
+    if (!code) return;
+    if (acc.some(x => x.code === code)) return;
+    acc.push({ code, ad: ad || "", soyad: soyad || "" });
+  };
+  (outgoing || []).forEach(i => push(i?.to?.user_code,   i?.to?.ad,   i?.to?.soyad));
+  (incoming || []).forEach(i => push(i?.from?.user_code, i?.from?.ad, i?.from?.soyad));
+  return acc.slice(0, 3);
+}, [incoming, outgoing]);
+
+
   useEffect(() => {
     getFeloxUser().then((u) => {
       if (!u) { window.location.href = "/login"; return; }
@@ -424,17 +438,34 @@ const act = async (id, action) => {
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 mb-3">
           <div className="text-[15px] font-semibold text-gray-800 mb-2">Davet Gönder</div>
 
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm text-gray-600">Mod:</span>
-            <select
-              className="px-3 py-1.5 rounded-xl text-sm border border-gray-300 focus:outline-none"
-              value={inviteMode}
-              onChange={(e) => setInviteMode(e.target.value)}
-            >
-              <option value="info">Bilgi</option>
-              <option value="speed">Hız</option>
-            </select>
-          </div>
+          <div className="mb-2">
+  <div className="text-sm text-gray-600 mb-1">Mod:</div>
+  <div className="flex gap-2 flex-wrap select-none">
+    <button
+      type="button"
+      onClick={() => setInviteMode("info")}
+      className={`px-3 py-1.5 rounded-xl text-sm font-bold border ${
+        inviteMode === "info"
+          ? "bg-emerald-600 text-white border-emerald-600"
+          : "bg-white text-gray-700 border-gray-300"
+      }`}
+    >
+      Bilgi
+    </button>
+    <button
+      type="button"
+      onClick={() => setInviteMode("speed")}
+      className={`px-3 py-1.5 rounded-xl text-sm font-bold border ${
+        inviteMode === "speed"
+          ? "bg-emerald-600 text-white border-emerald-600"
+          : "bg-white text-gray-700 border-gray-300"
+      }`}
+    >
+      Hız
+    </button>
+  </div>
+</div>
+
 
           <div className="flex items-center gap-2">
             <input
@@ -457,6 +488,26 @@ const act = async (id, action) => {
             Not: user_code kutusuna “ABC123” gibi kod giriyorsun.
           </div>
 
+          {recentOpps.length > 0 && (
+  <div className="mt-2">
+    <div className="text-xs text-gray-500 mb-1">Son düello yaptıkların:</div>
+    <div className="flex flex-wrap gap-2">
+      {recentOpps.map((o, i) => (
+        <button
+          key={`${o.code}-${i}`}
+          type="button"
+          onClick={() => setTargetCode(String(o.code).toUpperCase())}
+          className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-emerald-100 text-gray-800 text-sm font-semibold border border-gray-200"
+          title={`Kodu doldur: ${o.code}`}
+        >
+          {(o.ad || o.soyad) ? `${o.ad || ""} ${o.soyad || ""}`.trim() : o.code}
+        </button>
+      ))}
+    </div>
+  </div>
+)}
+
+
           {info && (
             <div className="mt-2 text-sm text-red-600">
               {info}
@@ -467,7 +518,7 @@ const act = async (id, action) => {
         {/* GELEN / GİDEN KUTULARI */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
-            <div className="text-[15px] font-semibold text-gray-800 mb-2">Gelen Kutusu</div>
+            <div className="text-[15px] font-semibold text-gray-800 mb-2">Gelen Davet</div>
             {listsLoading ? (
               <div className="text-sm text-gray-500">Yükleniyor…</div>
             ) : incoming.length === 0 ? (
@@ -503,7 +554,7 @@ const act = async (id, action) => {
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
-            <div className="text-[15px] font-semibold text-gray-800 mb-2">Giden Kutusu</div>
+            <div className="text-[15px] font-semibold text-gray-800 mb-2">Giden Davet</div>
             {listsLoading ? (
               <div className="text-sm text-gray-500">Yükleniyor…</div>
             ) : outgoing.length === 0 ? (
