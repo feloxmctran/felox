@@ -1,6 +1,6 @@
 // src/pages/DuelloLobby.jsx
-import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   API,                             // performans fetch'i için taban URL
   getProfile as apiGetProfile,
@@ -23,7 +23,6 @@ const VISIBILITY_TR = {
 };
 const fmtVisibility = (v) => VISIBILITY_TR[String(v || "").toLowerCase()] || v || "";
 
-
 /* === Felox universal user storage (UserPanel ile aynı mantık) === */
 async function getFeloxUser() {
   let userStr = localStorage.getItem("felox_user");
@@ -41,11 +40,8 @@ async function getFeloxUser() {
   return userStr ? JSON.parse(userStr) : null;
 }
 
-
 export default function DuelloLobby() {
   const navigate = useNavigate();
-  const location = useLocation();
-const autoOnceRef = useRef(false); // URL'den otomatik daveti 1 kez çalıştırmak için
 
   const [user, setUser] = useState(null);
 
@@ -143,62 +139,74 @@ const autoOnceRef = useRef(false); // URL'den otomatik daveti 1 kez çalıştır
   const [outgoing, setOutgoing] = useState([]);
   const [listsLoading, setListsLoading] = useState(false);
 
+  // === Son Rakipler + İsim Defteri (localStorage)
   const RECENTS_KEY = "felox_duello_recents";
-const [recentLocal, setRecentLocal] = useState([]);
-const [recentRemote, setRecentRemote] = useState([]);
+  const NAMEBOOK_KEY = "felox_namebook";
 
-// === Son Rakipler: Yerel hafıza ===
-useEffect(() => {
-  try {
-    const arr = JSON.parse(localStorage.getItem(RECENTS_KEY) || "[]");
-    setRecentLocal(Array.isArray(arr) ? arr : []);
-  } catch {}
-}, []);
-
-useEffect(() => {
-  try {
-    localStorage.setItem(RECENTS_KEY, JSON.stringify(recentLocal.slice(0, 12)));
-  } catch {}
-}, [recentLocal]);
-
-// Güvenli ekleyici
-const pushRecent = useCallback((op) => {
-  const code = String(op?.code || "").toUpperCase();
-  if (!code) return;
-  const ad = op?.ad || "";
-  const soyad = op?.soyad || "";
-  const ts = Date.now();
-  setRecentLocal((prev) => {
-    const without = (prev || []).filter((x) => x.code !== code);
-    return [{ code, ad, soyad, ts }, ...without].slice(0, 12);
+  const [recentLocal, setRecentLocal] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(RECENTS_KEY) || "[]"); }
+    catch { return []; }
   });
-}, []);
+  const [namebook, setNamebook] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(NAMEBOOK_KEY) || "{}"); }
+    catch { return {}; }
+  });
 
+  useEffect(() => {
+    try { localStorage.setItem(RECENTS_KEY, JSON.stringify(recentLocal.slice(0, 12))); } catch {}
+  }, [recentLocal]);
 
-  // Son oynadıklarım (incoming/outgoing'dan türetilir, en fazla 3 kişi)
-const recentOpps = useMemo(() => {
-  const acc = [];
-  const add = (code, ad, soyad, ts = 0) => {
+  useEffect(() => {
+    try { localStorage.setItem(NAMEBOOK_KEY, JSON.stringify(namebook)); } catch {}
+  }, [namebook]);
+
+  // Yardımcılar
+  const firstNonEmpty = (...vals) =>
+    vals.find(v => v !== undefined && v !== null && v !== "") ?? "";
+
+  // İsim öğrenici (code -> ad/soyad sözlüğü)
+  const learnName = useCallback((code, ad, soyad) => {
     const C = String(code || "").toUpperCase();
     if (!C) return;
-    if (acc.some((x) => x.code === C)) return;
-    acc.push({ code: C, ad: ad || "", soyad: soyad || "", ts });
-  };
+    const A = (ad || "").trim();
+    const S = (soyad || "").trim();
+    if (!A && !S) return;
+    setNamebook(prev => {
+      const p = prev || {};
+      return { ...p, [C]: { ad: A || p[C]?.ad || "", soyad: S || p[C]?.soyad || "" } };
+    });
+  }, []);
 
-  // 1) yerel hafıza
-  (recentLocal || []).forEach((x) => add(x.code, x.ad, x.soyad, x.ts || 0));
-  // 2) backend (varsa)
-  (recentRemote || []).forEach((x) => add(x.code, x.ad, x.soyad, x.ts || 0));
-  // 3) aktif kutular
-  (outgoing || []).forEach((i) => add(i?.to?.user_code,   i?.to?.ad,   i?.to?.soyad, 0));
-  (incoming || []).forEach((i) => add(i?.from?.user_code, i?.from?.ad, i?.from?.soyad, 0));
+  // Son rakipler listesine (en üste) ekle
+  const pushRecent = useCallback((op) => {
+    const code = String(op?.code || "").toUpperCase();
+    if (!code) return;
+    const ad = op?.ad || "";
+    const soyad = op?.soyad || "";
+    const ts = Date.now();
+    setRecentLocal((prev) => {
+      const without = (prev || []).filter((x) => x.code !== code);
+      return [{ code, ad, soyad, ts }, ...without].slice(0, 12);
+    });
+  }, []);
 
-  acc.sort((a, b) => (b.ts || 0) - (a.ts || 0));
-  return acc.slice(0, 3);
-}, [incoming, outgoing, recentLocal, recentRemote]);
+  // Son oynadıklarım (UI'da görünen 3 buton)
+  const recentOpps = useMemo(() => {
+    const arr = (recentLocal || []).map((r) => {
+      const C = String(r.code || "").toUpperCase();
+      const nb = namebook[C] || {};
+      return {
+        code: C,
+        ad: nb.ad || r.ad || "",
+        soyad: nb.soyad || r.soyad || "",
+        ts: r.ts || 0,
+      };
+    });
+    arr.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    return arr.slice(0, 3);
+  }, [recentLocal, namebook]);
 
-
-
+  // Kullanıcıyı getir
   useEffect(() => {
     getFeloxUser().then((u) => {
       if (!u) { window.location.href = "/login"; return; }
@@ -208,16 +216,15 @@ const recentOpps = useMemo(() => {
 
   // User code'u getir (önce user objesinden, yoksa backend)
   useEffect(() => {
-  if (!user?.id) return;
-  if (user?.user_code) {
-    setUserCode(user.user_code);
-    return;
-  }
-  apiGetUserCode(user.id)
-    .then(d => { if (d?.success && d.user_code) setUserCode(d.user_code); })
-    .catch(() => {});
-}, [user?.id, user?.user_code]);
-
+    if (!user?.id) return;
+    if (user?.user_code) {
+      setUserCode(user.user_code);
+      return;
+    }
+    apiGetUserCode(user.id)
+      .then(d => { if (d?.success && d.user_code) setUserCode(d.user_code); })
+      .catch(() => {});
+  }, [user?.id, user?.user_code]);
 
   const copyUserCode = async () => {
     if (!userCode) return;
@@ -238,68 +245,66 @@ const recentOpps = useMemo(() => {
     }
   };
 
-
-
-
-
   /* =================== API UYUMLU FONKSİYONLAR =================== */
 
   // PROFİLİ GETİR
   const fetchProfile = useCallback(async () => {
-  if (!user?.id) return;
-  setProfileLoading(true);
-  try {
-    const d = await apiGetProfile(user.id);
-    if (d?.success && d.profile) {
-      setReady(!!d.profile.ready);
-      setVisibility(d.profile.visibility_mode || "public");
+    if (!user?.id) return;
+    setProfileLoading(true);
+    try {
+      const d = await apiGetProfile(user.id);
+      if (d?.success && d.profile) {
+        setReady(!!d.profile.ready);
+        setVisibility(d.profile.visibility_mode || "public");
+      }
+    } finally {
+      setProfileLoading(false);
     }
-  } finally {
-    setProfileLoading(false);
-  }
-}, [user?.id]);
+  }, [user?.id]);
 
-
-  // GELEN/GİDEN KUTULARI GETİR
+  // GELEN/GİDEN KUTULARI GETİR + isim öğren
   const fetchLists = useCallback(async () => {
-  if (!user?.id) return;
-  setListsLoading(true);
-  try {
-    const [rin, rout] = await Promise.all([inbox(user.id), outbox(user.id)]);
+    if (!user?.id) return;
+    setListsLoading(true);
+    try {
+      const [rin, rout] = await Promise.all([inbox(user.id), outbox(user.id)]);
 
-    const pick = (...vals) => vals.find(v => v !== undefined && v !== null && v !== "") ?? "";
+      const incomingArr = (rin?.invites || []).map(i => ({
+        id: firstNonEmpty(i.id, i.invite_id, i._id),
+        mode: firstNonEmpty(i.mode, i.game_mode, "info"),
+        status: firstNonEmpty(i.status, i.state),
+        from: {
+          ad: firstNonEmpty(i.from_ad, i.from_name, i.sender_ad, i.sender_name, i.from?.ad, i.from?.name),
+          soyad: firstNonEmpty(i.from_soyad, i.sender_soyad, i.from?.soyad, i.from?.surname),
+          user_code: String(firstNonEmpty(
+            i.from_user_code, i.sender_user_code, i.from_code, i.fromUserCode, i.from?.user_code, i.from?.code
+          ) || "").toUpperCase(),
+        },
+      }));
 
-setIncoming((rin?.invites || []).map(i => ({
-  id: pick(i.id, i.invite_id, i._id),
-  mode: pick(i.mode, i.game_mode, "info"),
-  status: pick(i.status, i.state),
-  from: {
-    ad:       pick(i.from_ad, i.from_name, i.sender_ad, i.sender_name, i.from?.ad, i.from?.name),
-    soyad:    pick(i.from_soyad, i.sender_soyad, i.from?.soyad, i.from?.surname),
-    user_code: String(pick(
-      i.from_user_code, i.sender_user_code, i.from_code, i.fromUserCode, i.from?.user_code, i.from?.code
-    ) || "").toUpperCase(),
-  },
-})));
+      const outgoingArr = (rout?.invites || []).map(i => ({
+        id: firstNonEmpty(i.id, i.invite_id, i._id),
+        mode: firstNonEmpty(i.mode, i.game_mode, "info"),
+        status: firstNonEmpty(i.status, i.state),
+        to: {
+          ad: firstNonEmpty(i.to_ad, i.to_name, i.receiver_ad, i.receiver_name, i.to?.ad, i.to?.name),
+          soyad: firstNonEmpty(i.to_soyad, i.receiver_soyad, i.to?.soyad, i.to?.surname),
+          user_code: String(firstNonEmpty(
+            i.to_user_code, i.receiver_user_code, i.to_code, i.toUserCode, i.to?.user_code, i.to?.code
+          ) || "").toUpperCase(),
+        },
+      }));
 
-setOutgoing((rout?.invites || []).map(i => ({
-  id: pick(i.id, i.invite_id, i._id),
-  mode: pick(i.mode, i.game_mode, "info"),
-  status: pick(i.status, i.state),
-  to: {
-    ad:       pick(i.to_ad, i.to_name, i.receiver_ad, i.receiver_name, i.to?.ad, i.to?.name),
-    soyad:    pick(i.to_soyad, i.receiver_soyad, i.to?.soyad, i.to?.surname),
-    user_code: String(pick(
-      i.to_user_code, i.receiver_user_code, i.to_code, i.toUserCode, i.to?.user_code, i.to?.code
-    ) || "").toUpperCase(),
-  },
-})));
+      setIncoming(incomingArr);
+      setOutgoing(outgoingArr);
 
-  } finally {
-    setListsLoading(false);
-  }
-}, [user?.id]);
-
+      // İsimleri öğren
+      incomingArr.forEach(i => learnName(i.from.user_code, i.from.ad, i.from.soyad));
+      outgoingArr.forEach(i => learnName(i.to.user_code,   i.to.ad,   i.to.soyad));
+    } finally {
+      setListsLoading(false);
+    }
+  }, [user?.id, learnName]);
 
   // İlk yüklemede profili ve listeleri çek
   useEffect(() => {
@@ -308,12 +313,11 @@ setOutgoing((rout?.invites || []).map(i => ({
     fetchLists();
   }, [user?.id, fetchProfile, fetchLists]);
 
-  // *** YENİ: Gönderen tarafta maça otomatik geç (pending outbox varken) ***
+  // Gönderen tarafta maça otomatik geç (pending outbox varken)
   useEffect(() => {
     if (!user?.id) return;
-
     const hasPending = outgoing?.some((i) => i.status === "pending");
-    if (!hasPending) return; // bekleyen davet yoksa gereksiz poll etme
+    if (!hasPending) return;
 
     let stop = false;
     let t = null;
@@ -321,14 +325,11 @@ setOutgoing((rout?.invites || []).map(i => ({
     const tick = async () => {
       try {
         const d = await activeMatch(user.id);
-if (!stop && d?.success && d?.match_id) {
-  navigate(`/duello/${d.match_id}`);
-  return;
-}
-
-      } catch {
-        // sessiz geç
-      }
+        if (!stop && d?.success && d?.match_id) {
+          navigate(`/duello/${d.match_id}`);
+          return;
+        }
+      } catch {}
       if (!stop) t = setTimeout(tick, 2000); // 2 sn
     };
 
@@ -338,88 +339,81 @@ if (!stop && d?.success && d?.match_id) {
 
   // HAZIRLIK (READY) DEĞİŞTİR
   const toggleReady = async () => {
-  if (!user?.id) return;
-  setProfileLoading(true);
-  try {
-    const d = await apiSetReady({ user_id: user.id, ready: !ready });
-    if (d?.success) setReady(v => !v);
-  } finally {
-    setProfileLoading(false);
-  }
-};
-
+    if (!user?.id) return;
+    setProfileLoading(true);
+    try {
+      const d = await apiSetReady({ user_id: user.id, ready: !ready });
+      if (d?.success) setReady(v => !v);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
 
   // GÖRÜNÜRLÜK DEĞİŞTİR
   const changeVisibility = async (v) => {
-  if (!user?.id) return;
-  setVisibility(v); // optimistic
-  try { await apiSetVisibility({ user_id: user.id, visibility_mode: v }); } catch {}
-};
-
+    if (!user?.id) return;
+    setVisibility(v); // optimistic
+    try { await apiSetVisibility({ user_id: user.id, visibility_mode: v }); } catch {}
+  };
 
   // DAVET GÖNDER
-  // DAVET GÖNDER
-const sendInvite = async () => {
-  setInfo("");
-  if (!user?.id || !targetCode.trim()) {
-    setInfo("Hedef user_code yazmalısın.");
-    return;
-  }
-  setSending(true);
-  try {
-    const d = await createInvite({
-      from_user_id: user.id,
-      to_user_code: targetCode.trim(),
-      mode: inviteMode, // 'info' | 'speed'
-    });
-    if (d?.success) {
-  const codeUp = String(targetCode).toUpperCase();
-  pushRecent({ code: codeUp }); // isim yoksa sadece kodu ekle
-  setTargetCode("");
-  await fetchLists();
-}
-
-  } catch (e) {
-    setInfo(e?.message || "Davet gönderilemedi (ağ/CORS).");
-  } finally {
-    setSending(false);
-  }
-};
-
-
-  // KABUL/RET/İPTAL
-  // KABUL/RET/İPTAL
-const act = async (id, action) => {
-  try {
-    const mapped = action === "decline" ? "reject" : action; // UI geriye dönük
-
-        // Bu davetin karşı tarafını çıkar (incoming -> from, outgoing -> to)
-    const inc = (incoming || []).find((x) => x.id === id);
-    const out = (outgoing || []).find((x) => x.id === id);
-    const opp = inc ? inc.from : (out ? out.to : null);
-
-
-    if (mapped === "accept" || mapped === "reject") {
-      const d = await respondInvite({ invite_id: id, user_id: user.id, action: mapped });
-
-      if (d?.success && mapped === "accept" && opp?.user_code) {
-  pushRecent({ code: opp.user_code, ad: opp.ad, soyad: opp.soyad });
-}
-
-      if (d?.success && d?.match?.id) {
-        navigate(`/duello/${d.match.id}`);
-        return;
-      }
-    } else if (mapped === "cancel") {
-      await cancelInvite({ invite_id: id, user_id: user.id });
+  const sendInvite = async () => {
+    setInfo("");
+    if (!user?.id || !targetCode.trim()) {
+      setInfo("Hedef user_code yazmalısın.");
+      return;
     }
+    setSending(true);
+    try {
+      const d = await createInvite({
+        from_user_id: user.id,
+        to_user_code: targetCode.trim(),
+        mode: inviteMode, // 'info' | 'speed'
+      });
+      if (d?.success) {
+        const codeUp = String(targetCode).toUpperCase();
+        pushRecent({ code: codeUp }); // isim yoksa sadece kodu ekle
+        setTargetCode("");
+        await fetchLists();
+      }
+    } catch (e) {
+      setInfo(e?.message || "Davet gönderilemedi (ağ/CORS).");
+    } finally {
+      setSending(false);
+    }
+  };
 
-    await fetchLists();
-  } catch {
-    // sessiz geç; istersen burada setInfo ile mesaj gösterebilirsin
-  }
-};
+  // KABUL/RET/İPTAL
+  const act = async (id, action) => {
+    try {
+      const mapped = action === "decline" ? "reject" : action; // UI geriye dönük
 
+      // Bu davetin karşı tarafını çıkar (incoming -> from, outgoing -> to)
+      const inc = (incoming || []).find((x) => x.id === id);
+      const out = (outgoing || []).find((x) => x.id === id);
+      const opp = inc ? inc.from : (out ? out.to : null);
+
+      if (mapped === "accept" || mapped === "reject") {
+        const d = await respondInvite({ invite_id: id, user_id: user.id, action: mapped });
+
+        if (d?.success && mapped === "accept" && opp?.user_code) {
+          // kabul ettim -> bu kişi son rakiplerime düşsün + isim biliniyorsa kaydet
+          pushRecent({ code: opp.user_code, ad: opp.ad, soyad: opp.soyad });
+        }
+
+        if (d?.success && d?.match?.id) {
+          navigate(`/duello/${d.match.id}`);
+          return;
+        }
+      } else if (mapped === "cancel") {
+        await cancelInvite({ invite_id: id, user_id: user.id });
+      }
+
+      await fetchLists();
+    } catch {
+      // sessiz geç; istersen burada setInfo ile mesaj gösterebilirsin
+    }
+  };
 
   if (!user) {
     return (
@@ -490,21 +484,20 @@ const act = async (id, action) => {
             <div className="text-sm mb-1">Görünürlük:</div>
             <div className="flex gap-2 flex-wrap">
               {["public", "friends", "none"].map((v) => (
-  <button
-    key={v}
-    onClick={() => changeVisibility(v)}
-    className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${
-      visibility === v
-        ? "bg-cyan-600 text-white border-cyan-600"
-        : "bg-white text-cyan-700 border-cyan-200 hover:border-cyan-400"
-    }`}
-    title={fmtVisibility(v)}
-    aria-label={fmtVisibility(v)}
-  >
-    {fmtVisibility(v)}
-  </button>
-))}
-
+                <button
+                  key={v}
+                  onClick={() => changeVisibility(v)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${
+                    visibility === v
+                      ? "bg-cyan-600 text-white border-cyan-600"
+                      : "bg-white text-cyan-700 border-cyan-200 hover:border-cyan-400"
+                  }`}
+                  title={fmtVisibility(v)}
+                  aria-label={fmtVisibility(v)}
+                >
+                  {fmtVisibility(v)}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -513,34 +506,34 @@ const act = async (id, action) => {
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 mb-3">
           <div className="text-[15px] font-semibold text-gray-800 mb-2">Davet Gönder</div>
 
+          {/* B1 – Mod seçimi: butonlar */}
           <div className="mb-2">
-  <div className="text-sm text-gray-600 mb-1">Mod:</div>
-  <div className="flex gap-2 flex-wrap select-none">
-    <button
-      type="button"
-      onClick={() => setInviteMode("info")}
-      className={`px-3 py-1.5 rounded-xl text-sm font-bold border ${
-        inviteMode === "info"
-          ? "bg-emerald-600 text-white border-emerald-600"
-          : "bg-white text-gray-700 border-gray-300"
-      }`}
-    >
-      Bilgi
-    </button>
-    <button
-      type="button"
-      onClick={() => setInviteMode("speed")}
-      className={`px-3 py-1.5 rounded-xl text-sm font-bold border ${
-        inviteMode === "speed"
-          ? "bg-emerald-600 text-white border-emerald-600"
-          : "bg-white text-gray-700 border-gray-300"
-      }`}
-    >
-      Hız
-    </button>
-  </div>
-</div>
-
+            <div className="text-sm text-gray-600 mb-1">Mod:</div>
+            <div className="flex gap-2 flex-wrap select-none">
+              <button
+                type="button"
+                onClick={() => setInviteMode("info")}
+                className={`px-3 py-1.5 rounded-xl text-sm font-bold border ${
+                  inviteMode === "info"
+                    ? "bg-emerald-600 text-white border-emerald-600"
+                    : "bg-white text-gray-700 border-gray-300"
+                }`}
+              >
+                Bilgi
+              </button>
+              <button
+                type="button"
+                onClick={() => setInviteMode("speed")}
+                className={`px-3 py-1.5 rounded-xl text-sm font-bold border ${
+                  inviteMode === "speed"
+                    ? "bg-emerald-600 text-white border-emerald-600"
+                    : "bg-white text-gray-700 border-gray-300"
+                }`}
+              >
+                Hız
+              </button>
+            </div>
+          </div>
 
           <div className="flex items-center gap-2">
             <input
@@ -548,7 +541,6 @@ const act = async (id, action) => {
               placeholder="Hedef user_code"
               value={targetCode}
               onChange={(e) => setTargetCode(e.target.value.toUpperCase())}
-
             />
             <button
               className="px-3 py-2 rounded-xl text-sm font-bold bg-blue-600 text-white hover:bg-blue-800 active:scale-95 disabled:opacity-50"
@@ -563,25 +555,27 @@ const act = async (id, action) => {
             Not: user_code kutusuna “ABC123” gibi kod giriyorsun.
           </div>
 
+          {/* A – Son düello yaptıkların */}
           {recentOpps.length > 0 && (
-  <div className="mt-2">
-    <div className="text-xs text-gray-500 mb-1">Son düello yaptıkların:</div>
-    <div className="flex flex-wrap gap-2">
-      {recentOpps.map((o, i) => (
-        <button
-          key={`${o.code}-${i}`}
-          type="button"
-          onClick={() => setTargetCode(String(o.code).toUpperCase())}
-          className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-emerald-100 text-gray-800 text-sm font-semibold border border-gray-200"
-          title={`Kodu doldur: ${o.code}`}
-        >
-          {(o.ad || o.soyad) ? `${o.ad || ""} ${o.soyad || ""}`.trim() : o.code}
-        </button>
-      ))}
-    </div>
-  </div>
-)}
-
+            <div className="mt-2">
+              <div className="text-xs text-gray-500 mb-1">Son düello yaptıkların:</div>
+              <div className="flex flex-wrap gap-2">
+                {recentOpps.map((o, i) => (
+                  <button
+                    key={`${o.code}-${i}`}
+                    type="button"
+                    onClick={() => setTargetCode(String(o.code).toUpperCase())}
+                    className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-emerald-100 text-gray-800 text-sm font-semibold border border-gray-200"
+                    title={`Kodu doldur: ${o.code}`}
+                  >
+                    {(o.ad || o.soyad)
+                      ? `${o.ad || ""} ${o.soyad || ""}`.trim()
+                      : o.code}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {info && (
             <div className="mt-2 text-sm text-red-600">
