@@ -143,18 +143,60 @@ const autoOnceRef = useRef(false); // URL'den otomatik daveti 1 kez çalıştır
   const [outgoing, setOutgoing] = useState([]);
   const [listsLoading, setListsLoading] = useState(false);
 
+  const RECENTS_KEY = "felox_duello_recents";
+const [recentLocal, setRecentLocal] = useState([]);
+const [recentRemote, setRecentRemote] = useState([]);
+
+// === Son Rakipler: Yerel hafıza ===
+useEffect(() => {
+  try {
+    const arr = JSON.parse(localStorage.getItem(RECENTS_KEY) || "[]");
+    setRecentLocal(Array.isArray(arr) ? arr : []);
+  } catch {}
+}, []);
+
+useEffect(() => {
+  try {
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(recentLocal.slice(0, 12)));
+  } catch {}
+}, [recentLocal]);
+
+// Güvenli ekleyici
+const pushRecent = useCallback((op) => {
+  const code = String(op?.code || "").toUpperCase();
+  if (!code) return;
+  const ad = op?.ad || "";
+  const soyad = op?.soyad || "";
+  const ts = Date.now();
+  setRecentLocal((prev) => {
+    const without = (prev || []).filter((x) => x.code !== code);
+    return [{ code, ad, soyad, ts }, ...without].slice(0, 12);
+  });
+}, []);
+
+
   // Son oynadıklarım (incoming/outgoing'dan türetilir, en fazla 3 kişi)
 const recentOpps = useMemo(() => {
   const acc = [];
-  const push = (code, ad, soyad) => {
-    if (!code) return;
-    if (acc.some(x => x.code === code)) return;
-    acc.push({ code, ad: ad || "", soyad: soyad || "" });
+  const add = (code, ad, soyad, ts = 0) => {
+    const C = String(code || "").toUpperCase();
+    if (!C) return;
+    if (acc.some((x) => x.code === C)) return;
+    acc.push({ code: C, ad: ad || "", soyad: soyad || "", ts });
   };
-  (outgoing || []).forEach(i => push(i?.to?.user_code,   i?.to?.ad,   i?.to?.soyad));
-  (incoming || []).forEach(i => push(i?.from?.user_code, i?.from?.ad, i?.from?.soyad));
+
+  // 1) yerel hafıza
+  (recentLocal || []).forEach((x) => add(x.code, x.ad, x.soyad, x.ts || 0));
+  // 2) backend (varsa)
+  (recentRemote || []).forEach((x) => add(x.code, x.ad, x.soyad, x.ts || 0));
+  // 3) aktif kutular
+  (outgoing || []).forEach((i) => add(i?.to?.user_code,   i?.to?.ad,   i?.to?.soyad, 0));
+  (incoming || []).forEach((i) => add(i?.from?.user_code, i?.from?.ad, i?.from?.soyad, 0));
+
+  acc.sort((a, b) => (b.ts || 0) - (a.ts || 0));
   return acc.slice(0, 3);
-}, [incoming, outgoing]);
+}, [incoming, outgoing, recentLocal, recentRemote]);
+
 
 
   useEffect(() => {
@@ -196,6 +238,10 @@ const recentOpps = useMemo(() => {
     }
   };
 
+
+
+
+
   /* =================== API UYUMLU FONKSİYONLAR =================== */
 
   // PROFİLİ GETİR
@@ -221,19 +267,34 @@ const recentOpps = useMemo(() => {
   try {
     const [rin, rout] = await Promise.all([inbox(user.id), outbox(user.id)]);
 
-    setIncoming((rin?.invites || []).map(i => ({
-      id: i.id,
-      mode: i.mode,
-      status: i.status,
-      from: { ad: i.from_ad, soyad: i.from_soyad, user_code: i.from_user_code },
-    })));
+    const pick = (...vals) => vals.find(v => v !== undefined && v !== null && v !== "") ?? "";
 
-    setOutgoing((rout?.invites || []).map(i => ({
-      id: i.id,
-      mode: i.mode,
-      status: i.status,
-      to: { ad: i.to_ad, soyad: i.to_soyad, user_code: i.to_user_code },
-    })));
+setIncoming((rin?.invites || []).map(i => ({
+  id: pick(i.id, i.invite_id, i._id),
+  mode: pick(i.mode, i.game_mode, "info"),
+  status: pick(i.status, i.state),
+  from: {
+    ad:       pick(i.from_ad, i.from_name, i.sender_ad, i.sender_name, i.from?.ad, i.from?.name),
+    soyad:    pick(i.from_soyad, i.sender_soyad, i.from?.soyad, i.from?.surname),
+    user_code: String(pick(
+      i.from_user_code, i.sender_user_code, i.from_code, i.fromUserCode, i.from?.user_code, i.from?.code
+    ) || "").toUpperCase(),
+  },
+})));
+
+setOutgoing((rout?.invites || []).map(i => ({
+  id: pick(i.id, i.invite_id, i._id),
+  mode: pick(i.mode, i.game_mode, "info"),
+  status: pick(i.status, i.state),
+  to: {
+    ad:       pick(i.to_ad, i.to_name, i.receiver_ad, i.receiver_name, i.to?.ad, i.to?.name),
+    soyad:    pick(i.to_soyad, i.receiver_soyad, i.to?.soyad, i.to?.surname),
+    user_code: String(pick(
+      i.to_user_code, i.receiver_user_code, i.to_code, i.toUserCode, i.to?.user_code, i.to?.code
+    ) || "").toUpperCase(),
+  },
+})));
+
   } finally {
     setListsLoading(false);
   }
@@ -312,9 +373,12 @@ const sendInvite = async () => {
       mode: inviteMode, // 'info' | 'speed'
     });
     if (d?.success) {
-      setTargetCode("");
-      await fetchLists();
-    }
+  const codeUp = String(targetCode).toUpperCase();
+  pushRecent({ code: codeUp }); // isim yoksa sadece kodu ekle
+  setTargetCode("");
+  await fetchLists();
+}
+
   } catch (e) {
     setInfo(e?.message || "Davet gönderilemedi (ağ/CORS).");
   } finally {
@@ -329,8 +393,19 @@ const act = async (id, action) => {
   try {
     const mapped = action === "decline" ? "reject" : action; // UI geriye dönük
 
+        // Bu davetin karşı tarafını çıkar (incoming -> from, outgoing -> to)
+    const inc = (incoming || []).find((x) => x.id === id);
+    const out = (outgoing || []).find((x) => x.id === id);
+    const opp = inc ? inc.from : (out ? out.to : null);
+
+
     if (mapped === "accept" || mapped === "reject") {
       const d = await respondInvite({ invite_id: id, user_id: user.id, action: mapped });
+
+      if (d?.success && mapped === "accept" && opp?.user_code) {
+  pushRecent({ code: opp.user_code, ad: opp.ad, soyad: opp.soyad });
+}
+
       if (d?.success && d?.match?.id) {
         navigate(`/duello/${d.match.id}`);
         return;
