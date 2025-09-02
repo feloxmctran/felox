@@ -49,6 +49,15 @@ export const respondInvite  = ({ invite_id, user_id, action }) =>
 /* --- active match poll --- */
 export const activeMatch    = (userId) => req(`/api/duello/active/${userId}`);
 
+/* --- random ready --- */
+export const randomReady    = ({ user_id, mode = "info" }) =>
+  req(`/api/duello/random-ready`, { method: "POST", body: { user_id, mode } });
+
+/* --- recents (ad/soyad için) --- */
+export const getRecents     = (userId, limit = 12) =>
+  req(`/api/duello/user/${userId}/recents`, { params: { limit } });
+
+
 /* --- match flow --- */
 export const getMatchStatus = ({ matchId, user_id }) =>
   req(`/api/duello/match/${matchId}/status`, { params: { user_id } });
