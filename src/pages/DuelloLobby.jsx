@@ -139,45 +139,25 @@ export default function DuelloLobby() {
   const [outgoing, setOutgoing] = useState([]);
   const [listsLoading, setListsLoading] = useState(false);
 
-  // === Son Rakipler + İsim Defteri (localStorage)
+  // === SON RAKİPLER (yerel hafıza)
   const RECENTS_KEY = "felox_duello_recents";
-  const NAMEBOOK_KEY = "felox_namebook";
+  const [recentLocal, setRecentLocal] = useState([]);
 
-  const [recentLocal, setRecentLocal] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(RECENTS_KEY) || "[]"); }
-    catch { return []; }
-  });
-  const [namebook, setNamebook] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(NAMEBOOK_KEY) || "{}"); }
-    catch { return {}; }
-  });
-
+  // Yerelden yükle
   useEffect(() => {
-    try { localStorage.setItem(RECENTS_KEY, JSON.stringify(recentLocal.slice(0, 12))); } catch {}
+    try {
+      const arr = JSON.parse(localStorage.getItem(RECENTS_KEY) || "[]");
+      setRecentLocal(Array.isArray(arr) ? arr : []);
+    } catch {}
+  }, []);
+  // Yerele yaz
+  useEffect(() => {
+    try {
+      localStorage.setItem(RECENTS_KEY, JSON.stringify((recentLocal || []).slice(0, 12)));
+    } catch {}
   }, [recentLocal]);
 
-  useEffect(() => {
-    try { localStorage.setItem(NAMEBOOK_KEY, JSON.stringify(namebook)); } catch {}
-  }, [namebook]);
-
-  // Yardımcılar
-  const firstNonEmpty = (...vals) =>
-    vals.find(v => v !== undefined && v !== null && v !== "") ?? "";
-
-  // İsim öğrenici (code -> ad/soyad sözlüğü)
-  const learnName = useCallback((code, ad, soyad) => {
-    const C = String(code || "").toUpperCase();
-    if (!C) return;
-    const A = (ad || "").trim();
-    const S = (soyad || "").trim();
-    if (!A && !S) return;
-    setNamebook(prev => {
-      const p = prev || {};
-      return { ...p, [C]: { ad: A || p[C]?.ad || "", soyad: S || p[C]?.soyad || "" } };
-    });
-  }, []);
-
-  // Son rakipler listesine (en üste) ekle
+  // Güvenli ekleyici
   const pushRecent = useCallback((op) => {
     const code = String(op?.code || "").toUpperCase();
     if (!code) return;
@@ -190,23 +170,48 @@ export default function DuelloLobby() {
     });
   }, []);
 
-  // Son oynadıklarım (UI'da görünen 3 buton)
-  const recentOpps = useMemo(() => {
-    const arr = (recentLocal || []).map((r) => {
-      const C = String(r.code || "").toUpperCase();
-      const nb = namebook[C] || {};
-      return {
-        code: C,
-        ad: nb.ad || r.ad || "",
-        soyad: nb.soyad || r.soyad || "",
-        ts: r.ts || 0,
-      };
-    });
-    arr.sort((a, b) => (b.ts || 0) - (a.ts || 0));
-    return arr.slice(0, 3);
-  }, [recentLocal, namebook]);
+  // Kod -> ad/soyad çöz (listelerden ya da recents'ten)
+  const resolveNameByCode = useCallback((code) => {
+    const C = String(code || "").toUpperCase();
+    if (!C) return null;
 
-  // Kullanıcıyı getir
+    const fromOut = (outgoing || []).find(
+      i => String(i?.to?.user_code || "").toUpperCase() === C
+    )?.to;
+    const fromIn = (incoming || []).find(
+      i => String(i?.from?.user_code || "").toUpperCase() === C
+    )?.from;
+
+    const p = fromOut || fromIn;
+    if (p && (p.ad || p.soyad)) return { ad: p.ad || "", soyad: p.soyad || "" };
+
+    const loc = (recentLocal || []).find(x => x.code === C);
+    if (loc && (loc.ad || loc.soyad)) return { ad: loc.ad || "", soyad: loc.soyad || "" };
+
+    return null;
+  }, [incoming, outgoing, recentLocal]);
+
+  // Son oynadıklarım (3 kişi)
+  const recentOpps = useMemo(() => {
+    const acc = [];
+    const add = (code, ad, soyad, ts = 0) => {
+      const C = String(code || "").toUpperCase();
+      if (!C) return;
+      if (acc.some((x) => x.code === C)) return;
+      acc.push({ code: C, ad: ad || "", soyad: soyad || "", ts });
+    };
+
+    // 1) yerel hafıza
+    (recentLocal || []).forEach((x) => add(x.code, x.ad, x.soyad, x.ts || 0));
+    // 2) aktif kutular
+    (outgoing || []).forEach((i) => add(i?.to?.user_code,   i?.to?.ad,   i?.to?.soyad, 0));
+    (incoming || []).forEach((i) => add(i?.from?.user_code, i?.from?.ad, i?.from?.soyad, 0));
+
+    acc.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    return acc.slice(0, 3);
+  }, [incoming, outgoing, recentLocal]);
+
+  // === USER ===
   useEffect(() => {
     getFeloxUser().then((u) => {
       if (!u) { window.location.href = "/login"; return; }
@@ -262,49 +267,68 @@ export default function DuelloLobby() {
     }
   }, [user?.id]);
 
-  // GELEN/GİDEN KUTULARI GETİR + isim öğren
+  // GELEN/GİDEN KUTULARI GETİR  (isimleri de öğren)
   const fetchLists = useCallback(async () => {
     if (!user?.id) return;
     setListsLoading(true);
     try {
       const [rin, rout] = await Promise.all([inbox(user.id), outbox(user.id)]);
+      const _first = (...vals) => vals.find(v => v !== undefined && v !== null && v !== "") ?? "";
 
-      const incomingArr = (rin?.invites || []).map(i => ({
-        id: firstNonEmpty(i.id, i.invite_id, i._id),
-        mode: firstNonEmpty(i.mode, i.game_mode, "info"),
-        status: firstNonEmpty(i.status, i.state),
+      const inc = (rin?.invites || []).map(i => ({
+        id: _first(i.id, i.invite_id, i._id),
+        mode: _first(i.mode, i.game_mode, "info"),
+        status: _first(i.status, i.state),
         from: {
-          ad: firstNonEmpty(i.from_ad, i.from_name, i.sender_ad, i.sender_name, i.from?.ad, i.from?.name),
-          soyad: firstNonEmpty(i.from_soyad, i.sender_soyad, i.from?.soyad, i.from?.surname),
-          user_code: String(firstNonEmpty(
+          ad: _first(i.from_ad, i.from_name, i.sender_ad, i.sender_name, i.from?.ad, i.from?.name),
+          soyad: _first(i.from_soyad, i.sender_soyad, i.from?.soyad, i.from?.surname),
+          user_code: String(_first(
             i.from_user_code, i.sender_user_code, i.from_code, i.fromUserCode, i.from?.user_code, i.from?.code
           ) || "").toUpperCase(),
         },
       }));
 
-      const outgoingArr = (rout?.invites || []).map(i => ({
-        id: firstNonEmpty(i.id, i.invite_id, i._id),
-        mode: firstNonEmpty(i.mode, i.game_mode, "info"),
-        status: firstNonEmpty(i.status, i.state),
+      const out = (rout?.invites || []).map(i => ({
+        id: _first(i.id, i.invite_id, i._id),
+        mode: _first(i.mode, i.game_mode, "info"),
+        status: _first(i.status, i.state),
         to: {
-          ad: firstNonEmpty(i.to_ad, i.to_name, i.receiver_ad, i.receiver_name, i.to?.ad, i.to?.name),
-          soyad: firstNonEmpty(i.to_soyad, i.receiver_soyad, i.to?.soyad, i.to?.surname),
-          user_code: String(firstNonEmpty(
+          ad: _first(i.to_ad, i.to_name, i.receiver_ad, i.receiver_name, i.to?.ad, i.to?.name),
+          soyad: _first(i.to_soyad, i.receiver_soyad, i.to?.soyad, i.to?.surname),
+          user_code: String(_first(
             i.to_user_code, i.receiver_user_code, i.to_code, i.toUserCode, i.to?.user_code, i.to?.code
           ) || "").toUpperCase(),
         },
       }));
 
-      setIncoming(incomingArr);
-      setOutgoing(outgoingArr);
+      setIncoming(inc);
+      setOutgoing(out);
 
-      // İsimleri öğren
-      incomingArr.forEach(i => learnName(i.from.user_code, i.from.ad, i.from.soyad));
-      outgoingArr.forEach(i => learnName(i.to.user_code,   i.to.ad,   i.to.soyad));
+      // Yeni/eksik isimleri recents'e işle
+      setRecentLocal(prev => {
+        const map = new Map((prev || []).map(x => [x.code, x]));
+        const upsert = (code, ad, soyad) => {
+          const C = String(code || "").toUpperCase();
+          if (!C) return;
+          const cur = map.get(C);
+          if (!cur) {
+            map.set(C, { code: C, ad: ad || "", soyad: soyad || "", ts: Date.now() });
+          } else if ((!cur.ad && ad) || (!cur.soyad && soyad)) {
+            map.set(C, { ...cur, ad: cur.ad || ad || "", soyad: cur.soyad || soyad || "" });
+          }
+        };
+
+        inc.forEach(i => upsert(i.from.user_code, i.from.ad, i.from.soyad));
+        out.forEach(i => upsert(i.to.user_code, i.to.ad, i.to.soyad));
+
+        return Array.from(map.values())
+          .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+          .slice(0, 12);
+      });
     } finally {
       setListsLoading(false);
     }
-  }, [user?.id, learnName]);
+  }, [user?.id]);
 
   // İlk yüklemede profili ve listeleri çek
   useEffect(() => {
@@ -316,6 +340,7 @@ export default function DuelloLobby() {
   // Gönderen tarafta maça otomatik geç (pending outbox varken)
   useEffect(() => {
     if (!user?.id) return;
+
     const hasPending = outgoing?.some((i) => i.status === "pending");
     if (!hasPending) return;
 
@@ -329,8 +354,10 @@ export default function DuelloLobby() {
           navigate(`/duello/${d.match_id}`);
           return;
         }
-      } catch {}
-      if (!stop) t = setTimeout(tick, 2000); // 2 sn
+      } catch {
+        // sessiz geç
+      }
+      if (!stop) t = setTimeout(tick, 2000);
     };
 
     tick();
@@ -372,7 +399,8 @@ export default function DuelloLobby() {
       });
       if (d?.success) {
         const codeUp = String(targetCode).toUpperCase();
-        pushRecent({ code: codeUp }); // isim yoksa sadece kodu ekle
+        const known = resolveNameByCode(codeUp); // mevcut listelerden/yerelden isim varsa al
+        pushRecent({ code: codeUp, ad: known?.ad, soyad: known?.soyad });
         setTargetCode("");
         await fetchLists();
       }
@@ -397,7 +425,6 @@ export default function DuelloLobby() {
         const d = await respondInvite({ invite_id: id, user_id: user.id, action: mapped });
 
         if (d?.success && mapped === "accept" && opp?.user_code) {
-          // kabul ettim -> bu kişi son rakiplerime düşsün + isim biliniyorsa kaydet
           pushRecent({ code: opp.user_code, ad: opp.ad, soyad: opp.soyad });
         }
 
@@ -506,7 +533,6 @@ export default function DuelloLobby() {
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 mb-3">
           <div className="text-[15px] font-semibold text-gray-800 mb-2">Davet Gönder</div>
 
-          {/* B1 – Mod seçimi: butonlar */}
           <div className="mb-2">
             <div className="text-sm text-gray-600 mb-1">Mod:</div>
             <div className="flex gap-2 flex-wrap select-none">
@@ -555,7 +581,6 @@ export default function DuelloLobby() {
             Not: user_code kutusuna “ABC123” gibi kod giriyorsun.
           </div>
 
-          {/* A – Son düello yaptıkların */}
           {recentOpps.length > 0 && (
             <div className="mt-2">
               <div className="text-xs text-gray-500 mb-1">Son düello yaptıkların:</div>
@@ -568,9 +593,7 @@ export default function DuelloLobby() {
                     className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-emerald-100 text-gray-800 text-sm font-semibold border border-gray-200"
                     title={`Kodu doldur: ${o.code}`}
                   >
-                    {(o.ad || o.soyad)
-                      ? `${o.ad || ""} ${o.soyad || ""}`.trim()
-                      : o.code}
+                    {(o.ad || o.soyad) ? `${o.ad || ""} ${o.soyad || ""}`.trim() : o.code}
                   </button>
                 ))}
               </div>
