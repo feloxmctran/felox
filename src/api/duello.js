@@ -68,6 +68,11 @@ export const randomReady = ({ user_id, mode = "info" }) =>
 export const getRecents    = (userId, limit = 12) =>
   req(`/api/duello/user/${userId}/recents`, { params: { limit } });
 
+/* --- stats (kazanma/kaybetme) --- */
+export const getDuelloStats = (userId) =>
+  req(`/api/duello/user/${userId}/stats`);
+
+
 /* --- match flow --- */
 export const getMatchStatus = ({ matchId, user_id }) =>
   req(`/api/duello/match/${matchId}/status`, { params: { user_id } });

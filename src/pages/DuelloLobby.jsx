@@ -12,6 +12,7 @@ import {
   respondInvite,
   cancelInvite,
   activeMatch,
+  getDuelloStats,
 } from "../api/duello";
 
 import { openDuelloEventStream } from "../lib/duelloSSE";
@@ -59,6 +60,8 @@ export default function DuelloLobby() {
 
   // Rastgele
   const [randLoading, setRandLoading] = useState(false);
+    const [duelStats, setDuelStats] = useState(null); // {wins, losses, draws}
+
 
   // Gelen/Giden
   const [incoming, setIncoming] = useState([]);
@@ -297,11 +300,28 @@ export default function DuelloLobby() {
     }
   }, [user?.id]);
 
+    // Kazanma/Kaybetme istatistikleri
+  const fetchStats = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const d = await getDuelloStats(user.id);
+      // Alan isimleri farklıysa normalize et
+      const wins   = d?.wins   ?? d?.win   ?? d?.total_wins   ?? 0;
+      const losses = d?.losses ?? d?.lose  ?? d?.total_losses ?? 0;
+      const draws  = d?.draws  ?? d?.draw  ?? 0;
+      setDuelStats({ wins, losses, draws });
+    } catch {
+      setDuelStats(null); // hata/404 durumunda gizle
+    }
+  }, [user?.id]);
+
+
   // İlk yükleme
   useEffect(() => {
     if (!user?.id) return;
     fetchProfile();
     fetchLists();
+    fetchStats();
   }, [user?.id, fetchProfile, fetchLists]);
 
   // SSE: davet olaylarını canlı dinle (invite:new / accepted / rejected / cancelled)
@@ -612,6 +632,30 @@ useEffect(() => {
               </div>
             )}
           </div>
+                    {/* Kazanma / Kaybetme istatistikleri */}
+          {duelStats && (
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 text-center py-2">
+                <div className="text-[11px] text-emerald-700">Kazandığın</div>
+                <div className="text-xl font-extrabold text-emerald-700 tabular-nums">
+                  {duelStats.wins}
+                </div>
+              </div>
+              <div className="rounded-xl border border-rose-200 bg-rose-50 text-center py-2">
+                <div className="text-[11px] text-rose-700">Kaybettiğin</div>
+                <div className="text-xl font-extrabold text-rose-700 tabular-nums">
+                  {duelStats.losses}
+                </div>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 text-center py-2">
+                <div className="text-[11px] text-gray-700">Berabere</div>
+                <div className="text-xl font-extrabold text-gray-700 tabular-nums">
+                  {duelStats.draws}
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* DAVET GÖNDER */}
