@@ -10,6 +10,7 @@ import {
   CloseIcon,
   ChartIcon,
   SpinnerIcon,
+  SwordsIcon,
 } from "../icons/Icons";
 
 import { useNavigate, Link, useLocation } from "react-router-dom";
@@ -2433,13 +2434,14 @@ const ladderSessionRate = useMemo(() => {
 {/* Düello */}
 <Link
   to="/duello"
-    className="relative block w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-500 hover:to-indigo-800 text-white shadow-lg active:scale-95 transition text-center"
+  className="relative w-full py-3 rounded-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-500 hover:to-indigo-800 text-white shadow-lg active:scale-95 transition inline-flex items-center justify-center"
   title="Düello'ya git"
   aria-label={duelloUnread > 0 ? `Düello (yeni ${duelloUnread} davet)` : "Düello"}
 >
-  <span className="mr-2">⚔️</span> Düello
+  <SwordsIcon size={20} className="mr-2" />
+  Düello
   {duelloUnread > 0 && (
-    <span className="ml-2 inline-flex items-center justify-center text-[11px] font-extrabold bg-red-600 text-white rounded-full w-5 h-5 align-middle">
+    <span className="ml-2 inline-flex items-center justify-center text-[11px] font-extrabold bg-red-600 text-white rounded-full w-5 h-5">
       {duelloUnread > 99 ? "99+" : duelloUnread}
     </span>
   )}

@@ -95,3 +95,22 @@ export const StarIcon = (props) => (
     <path d="M12 3l2.9 5.9L21 10l-4.8 4.7L17.8 21 12 17.7 6.2 21l1.6-6.3L3 10l6.1-1.1z" />
   </svg>
 );
+
+
+/** Çapraz Kılıç (Düello) */
+export const SwordsIcon = (props) => (
+  <svg {...svgProps(props)}>
+    {/* Bıçaklar */}
+    <path d="M5 4l7 7" />
+    <path d="M19 4l-7 7" />
+    {/* Saplar */}
+    <path d="M12 11l-5 5" />
+    <path d="M12 11l5 5" />
+    {/* Kabza (crossguard) */}
+    <path d="M9.5 8.5l-2 2" />
+    <path d="M14.5 8.5l2 2" />
+    {/* Pommeleler */}
+    <circle cx="7" cy="16.5" r="1.2" />
+    <circle cx="17" cy="16.5" r="1.2" />
+  </svg>
+);
