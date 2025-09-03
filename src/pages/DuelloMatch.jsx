@@ -1,6 +1,6 @@
 // src/pages/DuelloMatch.jsx
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { getMatchStatus, sendAnswer, revealNext, getSummary, createInvite } from "../api/duello";
 
 export default function DuelloMatch({ matchId, userId }) {
@@ -28,6 +28,188 @@ export default function DuelloMatch({ matchId, userId }) {
       setSec((p) => (p > 0 ? p - 1 : 0)); // sadece görsel, reveal yok
     }, 1000);
   };
+
+function DuelWinnerPanel({ matchId, user, onBack }) {
+  const [sum, setSum] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    let stop = false;
+    (async () => {
+      try {
+        const d = await getSummary({ matchId, user_id: user.id });
+        if (!stop) setSum(d);
+      } finally {
+        if (!stop) setLoading(false);
+      }
+    })();
+    return () => { stop = true; };
+  }, [matchId, user.id]);
+
+  if (loading) {
+    return (
+      <div className="w-full rounded-3xl bg-white/90 p-6 text-center shadow-xl">
+        <div className="text-gray-600 text-sm">Özet yükleniyor…</div>
+      </div>
+    );
+  }
+  if (!sum?.success) {
+    return (
+      <div className="w-full rounded-3xl bg-white/90 p-6 text-center shadow-xl">
+        <div className="text-gray-600 text-sm">Özet alınamadı.</div>
+        <div className="mt-3">
+          <button onClick={onBack} className="px-4 py-2 rounded-xl bg-gray-200 text-gray-800 font-semibold">
+            Lobiye Dön
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const A = sum.users?.a || {};
+const B = sum.users?.b || {};
+const aStats = A.stats || { correct:0, wrong:0, bilmem:0, score:0 };
+const bStats = B.stats || { correct:0, wrong:0, bilmem:0, score:0 };
+
+// Ben A mıyım? (id alan adı A.user_id / A.id olabilir)
+const meIsA = Number(A.user_id ?? A.id) === Number(user.id);
+
+// Panelde kullanılacak kişiler (özetten "you/opponent" gelmiyorsa A/B'den türet)
+const you = sum.you || (meIsA ? A : B);
+const opp = sum.opponent || (meIsA ? B : A);
+
+const myStats = meIsA ? aStats : bStats;
+const opStats = meIsA ? bStats : aStats;
+
+
+  const meWon  = (sum.result?.code === "a_win" && meIsA) || (sum.result?.code === "b_win" && !meIsA);
+  const isDraw = sum.result?.code === "draw";
+  const title = isDraw ? "Berabere!" : meWon ? `Tebrikler ${you.ad} ${you.soyad}!` : `${opp.ad} ${opp.soyad} kazandı`;
+  const subtitle = isDraw ? "İnanılmaz bir mücadele, skorlar eşit!" : meWon ? "Müthiş bir galibiyet aldın 🎉" : "Bir dahakine sen alacaksın 💪";
+
+  const ScoreBadge = ({ value, label, good, neutral }) => (
+    <div className="px-3 py-2 rounded-xl bg-white/70 border border-gray-200 text-center">
+      <div className={`text-xl font-extrabold ${neutral ? "text-gray-700" : good ? "text-emerald-700" : "text-rose-700"}`}>{value}</div>
+      <div className="text-[11px] tracking-wide text-gray-500">{label}</div>
+    </div>
+  );
+
+  const askRematch = async () => {
+    try {
+      setSending(true);
+      await createInvite({
+  from_user_id: you.id,
+  to_user_id: opp?.user_id ?? opp?.id,
+  to_user_code: opp?.user_code,       // varsa gönder
+  mode: sum.match?.mode || sum.mode || "info",
+});
+
+      navigate("/duello");                 // Lobi yolunu projene göre değiştir
+    } catch (e) {
+      alert(e?.message || "Revanş daveti gönderilemedi.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="relative w-full rounded-3xl bg-gradient-to-b from-emerald-50 to-white p-6 shadow-2xl overflow-hidden">
+      {/* Kupa */}
+      <div className="absolute -top-6 left-1/2 -translate-x-1/2">
+        <div className={`${meWon ? "bg-amber-400" : isDraw ? "bg-gray-300" : "bg-rose-300"} w-16 h-16 rounded-full shadow-lg flex items-center justify-center animate-bounce`}>
+          <span className="text-3xl">🏆</span>
+        </div>
+      </div>
+
+      {/* Başlık */}
+      <div className="pt-6 text-center">
+        <div className="text-2xl font-black text-cyan-800">{title}</div>
+        <div className="text-sm text-gray-600 mt-1">{subtitle}</div>
+        <div className="text-xs text-gray-400 mt-1">
+          {(() => {
+  const rawMode = sum.match?.mode || sum.mode || "info";
+  const modeText = rawMode === "speed" ? "Hız" : "Bilgi";
+  const totalQ = sum.match?.total_questions ?? sum.total_questions ?? "-";
+  return <>Mod: {modeText} • Toplam Soru: {totalQ}</>;
+})()}
+
+        </div>
+      </div>
+
+      {/* İki kolon sonuç */}
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Sen */}
+        <div className={`rounded-2xl border p-4 bg-white/80 ${meWon ? "border-emerald-300" : isDraw ? "border-gray-200" : "border-rose-200"}`}>
+          <div className="flex items-center justify-between">
+            <div className="font-extrabold text-gray-800 truncate">{you.ad} {you.soyad}</div>
+            <div className={`px-2 py-1 rounded-lg text-xs font-bold ${meWon ? "bg-emerald-600 text-white" : "bg-gray-100 text-gray-600"}`}>
+              {meWon ? "KAZANAN" : isDraw ? "—" : "KAYBEDEN"}
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-4 gap-2">
+            <ScoreBadge value={myStats.correct} label="Doğru" good />
+            <ScoreBadge value={myStats.wrong}   label="Yanlış" />
+            <ScoreBadge value={myStats.bilmem}  label="Bilmem" neutral />
+            <ScoreBadge value={myStats.score}   label="Toplam" good={myStats.score>=0} />
+          </div>
+        </div>
+
+        {/* Rakip */}
+        <div className={`rounded-2xl border p-4 bg-white/80 ${(!meWon && !isDraw) ? "border-emerald-300" : isDraw ? "border-gray-200" : "border-rose-200"}`}>
+          <div className="flex items-center justify-between">
+            <div className="font-extrabold text-gray-800 truncate">{opp.ad} {opp.soyad}</div>
+            <div className={`px-2 py-1 rounded-lg text-xs font-bold ${(!meWon && !isDraw) ? "bg-emerald-600 text-white" : "bg-gray-100 text-gray-600"}`}>
+              {(!meWon && !isDraw) ? "KAZANAN" : isDraw ? "—" : "KAYBEDEN"}
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-4 gap-2">
+            <ScoreBadge value={opStats.correct} label="Doğru" good />
+            <ScoreBadge value={opStats.wrong}   label="Yanlış" />
+            <ScoreBadge value={opStats.bilmem}  label="Bilmem" neutral />
+            <ScoreBadge value={opStats.score}   label="Toplam" good={opStats.score>=0} />
+          </div>
+        </div>
+      </div>
+
+      {/* Butonlar */}
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+       <button
+  onClick={async () => {
+    try {
+      const s = await getSummary({ matchId, user_id: user.id });
+      const a = s.users?.a?.stats || { score:0 };
+      const b = s.users?.b?.stats || { score:0 };
+      alert(`Özet\nA: ${a.score} — B: ${b.score}\nSonuç: ${s.result?.code || "-"}`);
+    } catch (e) {
+      alert(e?.message || "Özet alınamadı.");
+    }
+  }}
+  className="px-4 py-2 rounded-xl bg-cyan-700 text-white font-bold hover:bg-cyan-800 active:scale-95"
+>
+  Özeti Gör
+</button>
+
+        <button
+          onClick={askRematch}
+          disabled={sending}
+          className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 active:scale-95 disabled:opacity-60"
+        >
+          {sending ? "Revanş daveti…" : "Revanş İste"}
+        </button>
+        <button
+          onClick={onBack}
+          className="px-4 py-2 rounded-xl bg-gray-200 text-gray-800 font-bold hover:bg-gray-300 active:scale-95"
+        >
+          Lobiye Dön
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 
   // --- status çek + sunucuya uy
   const fetchStatus = async () => {
@@ -217,27 +399,19 @@ const rematch = async () => {
   }
 
   if (st.finished) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
-        <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-lg p-6 text-center">
-          <h2 className="text-2xl font-extrabold text-cyan-700">Maç bitti</h2>
-          <p className="text-gray-600 mt-2">Skorun: <b>{myScore}</b> — Rakip: <b>{oppScore}</b></p>
-          <div className="mt-5 flex gap-3 justify-center flex-wrap">
-  <button onClick={toSummary} className={`${btnBase} bg-cyan-600 hover:bg-cyan-800`}>Özeti Gör</button>
-  <button onClick={rematch} className={`${btnBase} bg-emerald-600 hover:bg-emerald-800`}>Revanş İste</button>
-  <Link to="/duello" className={`${btnBase} bg-gray-400 hover:bg-gray-500`}>Lobiye Dön</Link>
-</div>
-
-{info && (
-  <div className="mt-3 text-sm text-red-600">
-    {info}
-  </div>
-)}
-
-        </div>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
+      <div className="w-full max-w-2xl">
+        <DuelWinnerPanel
+          matchId={matchId}
+          user={{ id: st?.you?.id, ad: st?.you?.ad, soyad: st?.you?.soyad }}
+          onBack={() => (window.location.href = "/duello")} // Lobi rotanı gerekiyorsa değiştir
+        />
       </div>
-    );
-  }
+    </div>
+  );
+}
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
