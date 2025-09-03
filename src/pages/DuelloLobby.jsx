@@ -736,11 +736,9 @@ useEffect(() => {
           title={`Kodu doldur: ${o.code}`}
         >
           {(o.ad || o.soyad)
-            ? <>
-                {`${o.ad || ""} ${o.soyad || ""}`.trim()}
-                <span className="ml-1 text-gray-400 text-xs">({o.code})</span>
-              </>
-            : o.code}
+  ? `${o.ad || ""} ${o.soyad || ""}`.trim()
+  : o.code}
+
         </button>
       ))}
     </div>
