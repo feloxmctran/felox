@@ -60,8 +60,7 @@ export default function DuelloLobby() {
 
   // Rastgele
   const [randLoading, setRandLoading] = useState(false);
-    const [duelStats, setDuelStats] = useState(null); // {wins, losses, draws}
-
+  const [duelStats, setDuelStats] = useState(null); // {wins, losses, draws}
 
   // Gelen/Giden
   const [incoming, setIncoming] = useState([]);
@@ -72,6 +71,10 @@ export default function DuelloLobby() {
   const RECENTS_KEY = "felox_duello_recents";
   const [recentLocal, setRecentLocal] = useState([]);
   const [recentRemote] = useState([]); // ileride API eklenirse
+
+  // HYDRATE & SEED bayrakları
+  const [recentsHydrated, setRecentsHydrated] = useState(false);
+  const [seededFromLists, setSeededFromLists] = useState(false);
 
   // Cinsiyet -> avatar
   const gender = useMemo(() => {
@@ -171,18 +174,46 @@ export default function DuelloLobby() {
       .catch(() => {});
   }, [user?.id, user?.user_code]);
 
-  // Yerel recents oku & yaz
+  /* ===== Yerel recents oku & yaz (HYDRATE + NORMALIZE) ===== */
   useEffect(() => {
     try {
-      const arr = JSON.parse(localStorage.getItem(RECENTS_KEY) || "[]");
-      setRecentLocal(Array.isArray(arr) ? arr : []);
-    } catch (_) {}
+      const raw = localStorage.getItem(RECENTS_KEY);
+      if (!raw) {
+        setRecentsHydrated(true);
+        return;
+      }
+      let data = JSON.parse(raw);
+      if (!Array.isArray(data)) data = [];
+
+      const norm = data
+        .map((x) => {
+          const code = String(
+            x?.code || x?.user_code || x?.uc || x // eleman string ise
+          ).toUpperCase();
+          const ad = x?.ad || x?.name || x?.first_name || "";
+          const soyad = x?.soyad || x?.last_name || x?.surname || "";
+          const ts = Number(x?.ts || Date.now());
+          return code ? { code, ad, soyad, ts } : null;
+        })
+        .filter(Boolean);
+
+      if (norm.length) setRecentLocal(norm);
+    } catch {
+      // parse hatası olursa dokunma
+    } finally {
+      setRecentsHydrated(true);
+    }
   }, []);
+
   useEffect(() => {
+    if (!recentsHydrated) return; // okuma bitmeden yazma yok
     try {
-      localStorage.setItem(RECENTS_KEY, JSON.stringify(recentLocal.slice(0, 12)));
-    } catch (_) {}
-  }, [recentLocal]);
+      localStorage.setItem(
+        RECENTS_KEY,
+        JSON.stringify(recentLocal.slice(0, 12))
+      );
+    } catch {}
+  }, [recentsHydrated, recentLocal]);
 
   // Güvenli ekleyici
   const pushRecent = useCallback((op) => {
@@ -197,23 +228,22 @@ export default function DuelloLobby() {
     });
   }, []);
 
-  // Son oynadıkların (3 buton)
+  // Son oynadıkların (3 buton) – ekranda göstereceğimiz veriyi üret
   const recentOpps = useMemo(() => {
-  const acc = [];
-  const add = (code, ad, soyad, ts = 0) => {
-    const C = String(code || "").toUpperCase();
-    if (!C) return;
-    const existing = acc.find((x) => x.code === C);
-    const hasName = !!((ad || "").trim() || (soyad || "").trim());
-    if (!existing) {
-      acc.push({ code: C, ad: ad || "", soyad: soyad || "", ts });
-    } else if (hasName && !(existing.ad || existing.soyad)) {
-      // isim sonradan geldiyse kaydı yükselt
-      existing.ad = ad || existing.ad;
-      existing.soyad = soyad || existing.soyad;
-      existing.ts = Math.max(existing.ts || 0, ts || 0);
-    }
-  };
+    const acc = [];
+    const add = (code, ad, soyad, ts = 0) => {
+      const C = String(code || "").toUpperCase();
+      if (!C) return;
+      const existing = acc.find((x) => x.code === C);
+      const hasName = !!((ad || "").trim() || (soyad || "").trim());
+      if (!existing) {
+        acc.push({ code: C, ad: ad || "", soyad: soyad || "", ts });
+      } else if (hasName && !(existing.ad || existing.soyad)) {
+        existing.ad = ad || existing.ad;
+        existing.soyad = soyad || existing.soyad;
+        existing.ts = Math.max(existing.ts || 0, ts || 0);
+      }
+    };
 
     (recentLocal || []).forEach((x) => add(x.code, x.ad, x.soyad, x.ts || 0));
     (recentRemote || []).forEach((x) => add(x.code, x.ad, x.soyad, x.ts || 0));
@@ -226,6 +256,73 @@ export default function DuelloLobby() {
     acc.sort((a, b) => (b.ts || 0) - (a.ts || 0));
     return acc.slice(0, 3);
   }, [incoming, outgoing, recentLocal, recentRemote]);
+
+  // incoming/outgoing geldikçe local recents'ı kalıcı olarak zenginleştir (isim tamamlama)
+  useEffect(() => {
+    // code -> {ad, soyad}
+    const map = new Map();
+
+    (incoming || []).forEach((i) => {
+      const c = String(i?.from?.user_code || "").toUpperCase();
+      if (c) map.set(c, { ad: i?.from?.ad || "", soyad: i?.from?.soyad || "" });
+    });
+
+    (outgoing || []).forEach((i) => {
+      const c = String(i?.to?.user_code || "").toUpperCase();
+      if (c) map.set(c, { ad: i?.to?.ad || "", soyad: i?.to?.soyad || "" });
+    });
+
+    setRecentLocal((prev) => {
+      let changed = false;
+      const next = (prev || []).map((x) => {
+        const info = map.get(String(x.code).toUpperCase());
+        if (!info) return x;
+        const ad = x.ad || info.ad || "";
+        const soyad = x.soyad || info.soyad || "";
+        if (ad !== x.ad || soyad !== x.soyad) {
+          changed = true;
+          return { ...x, ad, soyad };
+        }
+        return x;
+      });
+      return changed ? next : prev;
+    });
+  }, [incoming, outgoing]);
+
+  // İlk liste yüklendiğinde localStorage boşsa incoming/outgoing'dan tohumla
+  useEffect(() => {
+    if (!recentsHydrated) return;
+    if (seededFromLists) return;
+
+    const now = Date.now();
+    const map = new Map((recentLocal || []).map((x) => [x.code.toUpperCase(), x]));
+
+    const add = (code, ad, soyad) => {
+      const C = String(code || "").toUpperCase();
+      if (!C) return;
+      if (!map.has(C)) {
+        map.set(C, { code: C, ad: ad || "", soyad: soyad || "", ts: now });
+      } else {
+        const cur = map.get(C);
+        if ((!cur.ad && ad) || (!cur.soyad && soyad)) {
+          map.set(C, { ...cur, ad: cur.ad || ad || "", soyad: cur.soyad || soyad || "" });
+        }
+      }
+    };
+
+    (incoming || []).forEach((i) =>
+      add(i?.from?.user_code, i?.from?.ad, i?.from?.soyad)
+    );
+    (outgoing || []).forEach((i) =>
+      add(i?.to?.user_code, i?.to?.ad, i?.to?.soyad)
+    );
+
+    const next = Array.from(map.values());
+    if (next.length !== (recentLocal || []).length) {
+      setRecentLocal(next.slice(0, 12));
+    }
+    setSeededFromLists(true);
+  }, [recentsHydrated, seededFromLists, incoming, outgoing, recentLocal]);
 
   const copyUserCode = async () => {
     if (!userCode) return;
@@ -309,21 +406,19 @@ export default function DuelloLobby() {
     }
   }, [user?.id]);
 
-    // Kazanma/Kaybetme istatistikleri
+  // Kazanma/Kaybetme istatistikleri
   const fetchStats = useCallback(async () => {
     if (!user?.id) return;
     try {
       const d = await getDuelloStats(user.id);
-      // Alan isimleri farklıysa normalize et
       const wins   = d?.wins   ?? d?.win   ?? d?.total_wins   ?? 0;
       const losses = d?.losses ?? d?.lose  ?? d?.total_losses ?? 0;
       const draws  = d?.draws  ?? d?.draw  ?? 0;
       setDuelStats({ wins, losses, draws });
     } catch {
-      setDuelStats(null); // hata/404 durumunda gizle
+      setDuelStats(null);
     }
   }, [user?.id]);
-
 
   // İlk yükleme
   useEffect(() => {
@@ -334,67 +429,94 @@ export default function DuelloLobby() {
   }, [user?.id, fetchProfile, fetchLists]);
 
   // SSE: davet olaylarını canlı dinle (invite:new / accepted / rejected / cancelled)
-useEffect(() => {
-  if (!user?.id) return;
+  useEffect(() => {
+    if (!user?.id) return;
 
-  const es = openDuelloEventStream({
-    apiUrl: API,
-    userId: user.id,
-    handlers: {
-      // Sana yeni bir davet geldi -> incoming'e ekle (duplikeyi önle)
-      "invite:new": ({ invite, from }) => {
-        const iid = invite?.id;
-        if (!iid) return;
-        setIncoming((prev) => {
-          if (Array.isArray(prev) && prev.some((x) => x.id === iid)) return prev;
-          return [
-            {
-              id: iid,
-              mode: invite?.mode || "info",
-              status: "pending",
-              from: {
-                ad: from?.ad || "",
-                soyad: from?.soyad || "",
-                user_code: String(from?.user_code || "").toUpperCase(),
+    const es = openDuelloEventStream({
+      apiUrl: API,
+      userId: user.id,
+      handlers: {
+        "invite:new": ({ invite, from }) => {
+          const iid = invite?.id;
+          if (!iid) return;
+          setIncoming((prev) => {
+            if (Array.isArray(prev) && prev.some((x) => x.id === iid)) return prev;
+            return [
+              {
+                id: iid,
+                mode: invite?.mode || "info",
+                status: "pending",
+                from: {
+                  ad: from?.ad || "",
+                  soyad: from?.soyad || "",
+                  user_code: String(from?.user_code || "").toUpperCase(),
+                },
               },
-            },
-            ...(prev || []),
-          ];
-        });
-      },
+              ...(prev || []),
+            ];
+          });
+        },
 
-      // Davetin kabul edildi -> listeleri temizle, maça git (match_id geldiyse)
-      "invite:accepted": ({ invite_id, match_id }) => {
-        setIncoming((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
-        setOutgoing((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
-        if (match_id) {
-          navigate(`/duello/${match_id}`);
-        } else {
-          // güvenlik için listeleri tazele
-          fetchLists();
-        }
-      },
+       "invite:accepted": ({ invite_id, match_id }) => {
+  // Not: incoming/outgoing’un GÜNCEL haline ulaşmak için
+  // setState’in fonksiyon formunu kullanıyoruz.
+  let oppRef = { code: "", ad: "", soyad: "" };
 
-      // Davetin reddedildi -> giden listeden düş (alıcıya SSE gitmediği için incoming'de muhtemelen yok)
-      "invite:rejected": ({ invite_id }) => {
-        setOutgoing((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
-        // yine de temizlik amaçlı:
-        setIncoming((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
-      },
-
-      // Davet iptal edildi (gönderen iptal etti) -> her iki listeden de düş
-      "invite:cancelled": ({ invite_id }) => {
-        setOutgoing((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
-        setIncoming((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
-      },
-    },
+  setIncoming((prev) => {
+    const f = (prev || []).find((x) => x.id === invite_id);
+    if (f?.from?.user_code) {
+      oppRef = {
+        code: String(f.from.user_code).toUpperCase(),
+        ad: f.from.ad || "",
+        soyad: f.from.soyad || "",
+      };
+    }
+    return Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev;
   });
 
-  return () => {
-    try { es?.close?.(); } catch {}
-  };
-}, [user?.id, navigate, fetchLists]);
+  setOutgoing((prev) => {
+    if (!oppRef.code) {
+      const f = (prev || []).find((x) => x.id === invite_id);
+      if (f?.to?.user_code) {
+        oppRef = {
+          code: String(f.to.user_code).toUpperCase(),
+          ad: f.to.ad || "",
+          soyad: f.to.soyad || "",
+        };
+      }
+    }
+    return Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev;
+  });
 
+  // Rakibi kalıcı recents’a yaz (localStorage’a da gidecek)
+  if (oppRef.code) {
+    pushRecent(oppRef);
+  }
+
+  if (match_id) {
+    navigate(`/duello/${match_id}`);
+  } else {
+    fetchLists();
+  }
+},
+
+
+        "invite:rejected": ({ invite_id }) => {
+          setOutgoing((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
+          setIncoming((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
+        },
+
+        "invite:cancelled": ({ invite_id }) => {
+          setOutgoing((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
+          setIncoming((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
+        },
+      },
+    });
+
+    return () => {
+      try { es?.close?.(); } catch {}
+    };
+  }, [user?.id, navigate, fetchLists]);
 
   // Gönderen tarafta: pending outbox varken aktif maçı poll et
   useEffect(() => {
@@ -440,7 +562,6 @@ useEffect(() => {
   const fetchRandomReadyOpponent = useCallback(async () => {
     if (!user?.id) return null;
 
-    // Backend’inde hangisi varsa birini 200 döndürsün.
     const urls = [
       `${API}/api/duello/random-ready?exclude_user_id=${user.id}`,
       `${API}/api/duello/ready/random?exclude=${user.id}`,
@@ -487,7 +608,6 @@ useEffect(() => {
       });
 
       if (d?.success) {
-        // isimleri yerel hafızaya yaz
         pushRecent({ code: opp.code, ad: opp.ad, soyad: opp.soyad });
         await fetchLists();
         setInfo("Davet gönderildi. Kabul edilince düello başlayacak.");
@@ -641,7 +761,8 @@ useEffect(() => {
               </div>
             )}
           </div>
-                    {/* Kazanma / Kaybetme istatistikleri */}
+
+          {/* Kazanma / Kaybetme istatistikleri */}
           {duelStats && (
             <div className="mt-3 grid grid-cols-3 gap-2">
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 text-center py-2">
@@ -664,7 +785,6 @@ useEffect(() => {
               </div>
             </div>
           )}
-
         </div>
 
         {/* DAVET GÖNDER */}
@@ -672,7 +792,6 @@ useEffect(() => {
           <div className="text-[15px] font-semibold text-gray-800 mb-2">Davet Gönder</div>
 
           <div className="mb-2">
-            
             <div className="flex gap-2 flex-wrap select-none">
               <button
                 type="button"
@@ -720,31 +839,31 @@ useEffect(() => {
           </div>
 
           {/* Son düello yaptıkların */}
-<div className="mt-2">
-  <div className="text-xs text-gray-500 mb-1">Son düello yaptıkların:</div>
+          <div className="mt-2">
+            <div className="text-xs text-gray-500 mb-1">Son düello yaptıkların:</div>
 
-  {recentOpps.length === 0 ? (
-    <div className="text-xs text-gray-400">Henüz yok</div>
-  ) : (
-    <div className="flex flex-wrap gap-2">
-      {recentOpps.map((o, i) => (
-        <button
-          key={`${o.code}-${i}`}
-          type="button"
-          onClick={() => setTargetCode(String(o.code).toUpperCase())}
-          className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-emerald-100 text-gray-800 text-sm font-semibold border border-gray-200"
-          title={`Kodu doldur: ${o.code}`}
-        >
-          {(o.ad || o.soyad)
-  ? `${o.ad || ""} ${o.soyad || ""}`.trim()
-  : o.code}
-
-        </button>
-      ))}
-    </div>
-  )}
-</div>
-
+            {!recentsHydrated ? (
+              <div className="text-xs text-gray-400">Yükleniyor…</div>
+            ) : recentOpps.length === 0 ? (
+              <div className="text-xs text-gray-400">Henüz yok</div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {recentOpps.map((o, i) => (
+                  <button
+                    key={`${o.code}-${i}`}
+                    type="button"
+                    onClick={() => setTargetCode(String(o.code).toUpperCase())}
+                    className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-emerald-100 text-gray-800 text-sm font-semibold border border-gray-200"
+                    title={`Kodu doldur: ${o.code}`}
+                  >
+                    {(o.ad || o.soyad)
+                      ? `${o.ad || ""} ${o.soyad || ""}`.trim()
+                      : o.code}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {info && <div className="mt-2 text-sm text-red-600">{info}</div>}
         </div>
