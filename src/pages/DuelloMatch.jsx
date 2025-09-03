@@ -16,7 +16,6 @@ function FinishPanel({ matchId, liveStatus, userId, onBack }) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
-  // Özet çek (başarısız olursa liveStatus ile devam)
   useEffect(() => {
     let stop = false;
     (async () => {
@@ -34,16 +33,12 @@ function FinishPanel({ matchId, liveStatus, userId, onBack }) {
     };
   }, [matchId, userId]);
 
-  // ---- normalize
   const S = (sum && (sum.summary || sum)) || null;
   const st = liveStatus || {};
 
-  // Kim kim?
   const aId = Number(S?.users?.a?.user_id ?? S?.users?.a?.id ?? st.match?.user_a_id);
   const bId = Number(S?.users?.b?.user_id ?? S?.users?.b?.id ?? st.match?.user_b_id);
-
-  const meIsA =
-    Number(userId) === aId ? true : Number(userId) === bId ? false : true;
+  const meIsA = Number(userId) === aId ? true : Number(userId) === bId ? false : true;
 
   const you =
     S?.you ??
@@ -58,21 +53,11 @@ function FinishPanel({ matchId, liveStatus, userId, onBack }) {
     (meIsA ? st.opponent : st.you) ??
     {};
 
-  // Skor
-  const aScore =
-    S?.users?.a?.stats?.score ??
-    S?.scores?.a ??
-    st?.scores?.score_a ??
-    0;
-  const bScore =
-    S?.users?.b?.stats?.score ??
-    S?.scores?.b ??
-    st?.scores?.score_b ??
-    0;
+  const aScore = S?.users?.a?.stats?.score ?? S?.scores?.a ?? st?.scores?.score_a ?? 0;
+  const bScore = S?.users?.b?.stats?.score ?? S?.scores?.b ?? st?.scores?.score_b ?? 0;
   const myScore = meIsA ? aScore : bScore;
   const opScore = meIsA ? bScore : aScore;
 
-  // Sonuç
   const draw = myScore === opScore;
   const meWon = !draw && myScore > opScore;
   const rawMode = S?.match?.mode || S?.mode || st?.match?.mode || "info";
@@ -80,7 +65,6 @@ function FinishPanel({ matchId, liveStatus, userId, onBack }) {
   const totalQ =
     S?.match?.total_questions ?? S?.total_questions ?? st?.match?.total_questions ?? "-";
 
-  // Revanş
   const askRematch = async () => {
     try {
       setSending(true);
@@ -103,8 +87,10 @@ function FinishPanel({ matchId, liveStatus, userId, onBack }) {
       <div className="bg-white/95 rounded-3xl shadow-2xl p-6 sm:p-7">
         {/* Kupa */}
         <div className="w-full flex justify-center mb-2">
-          <div className="w-14 h-14 rounded-full flex items-center justify-center shadow-md"
-               style={{ backgroundColor: meWon ? "#FBBF24" : draw ? "#D1D5DB" : "#FCA5A5" }}>
+          <div
+            className="w-14 h-14 rounded-full flex items-center justify-center shadow-md"
+            style={{ backgroundColor: meWon ? "#FBBF24" : draw ? "#D1D5DB" : "#FCA5A5" }}
+          >
             <span className="text-3xl">🏆</span>
           </div>
         </div>
@@ -114,36 +100,39 @@ function FinishPanel({ matchId, liveStatus, userId, onBack }) {
           <div className="text-2xl font-black text-cyan-800">Tebrikler !</div>
 
           {!draw && (
-            <div className="mt-1 text-2xl font-extrabold text-gray-900">
-              {meWon
-                ? `${you?.ad ?? ""} ${you?.soyad ?? ""}`.trim()
-                : `${opp?.ad ?? ""} ${opp?.soyad ?? ""}`.trim()}
+            <div className="mt-1 text-3xl font-extrabold text-gray-900">
+              {(meWon
+                ? `${you?.ad ?? ""} ${you?.soyad ?? ""}`
+                : `${opp?.ad ?? ""} ${opp?.soyad ?? ""}`
+              ).trim()}
             </div>
           )}
 
-          <div className="mt-1 text-sm text-gray-600">
+          {/* büyütülen metinler */}
+          <div className="mt-1 text-lg font-semibold text-gray-700">
             {draw ? "İnanılmaz bir mücadele, skorlar eşit!" : "Müthiş bir galibiyet aldın 🥳"}
           </div>
 
           {!draw && (
-            <div className="mt-1 text-xs text-gray-500">
-              {`Fena yarışmadın ama olmadı, ${meWon
-                ? `${opp?.ad ?? ""} ${opp?.soyad ?? ""}`.trim()
-                : `${you?.ad ?? ""} ${you?.soyad ?? ""}`.trim()
+            <div className="mt-1 text-base text-gray-600">
+              {`Fena yarışmadın ama olmadı, ${
+                meWon
+                  ? `${opp?.ad ?? ""} ${opp?.soyad ?? ""}`.trim()
+                  : `${you?.ad ?? ""} ${you?.soyad ?? ""}`.trim()
               }`}
             </div>
           )}
 
-          <div className="mt-1 text-xs text-gray-400">
+          <div className="mt-1 text-sm text-gray-500">
             Mod: {modeText} • Toplam Soru: {totalQ}
           </div>
         </div>
 
-        {/* İki kutu – sadece TOPLAM */}
-        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* İki kutu – sadece TOPLAM (daraltılmış) */}
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 place-items-center">
           {/* Sen */}
           <div
-            className={`rounded-2xl border bg-white p-4 ${
+            className={`w-full sm:w-[300px] rounded-2xl border bg-white p-3 sm:p-4 ${
               meWon ? "border-emerald-300" : draw ? "border-gray-200" : "border-rose-200"
             }`}
           >
@@ -163,16 +152,14 @@ function FinishPanel({ matchId, liveStatus, userId, onBack }) {
             </div>
 
             <div className="mt-3">
-              <div className="text-3xl font-black tabular-nums">
-                {myScore}
-              </div>
+              <div className="text-3xl font-black tabular-nums">{myScore}</div>
               <div className="text-[11px] text-gray-500">Toplam</div>
             </div>
           </div>
 
           {/* Rakip */}
           <div
-            className={`rounded-2xl border bg-white p-4 ${
+            className={`w-full sm:w-[300px] rounded-2xl border bg-white p-3 sm:p-4 ${
               !draw && !meWon ? "border-emerald-300" : draw ? "border-gray-200" : "border-rose-200"
             }`}
           >
@@ -192,9 +179,7 @@ function FinishPanel({ matchId, liveStatus, userId, onBack }) {
             </div>
 
             <div className="mt-3">
-              <div className="text-3xl font-black tabular-nums">
-                {opScore}
-              </div>
+              <div className="text-3xl font-black tabular-nums">{opScore}</div>
               <div className="text-[11px] text-gray-500">Toplam</div>
             </div>
           </div>
@@ -222,7 +207,7 @@ function FinishPanel({ matchId, liveStatus, userId, onBack }) {
             disabled={sending}
             className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 active:scale-95 disabled:opacity-60"
           >
-            {sending ? "Revanş daveti…" : "Revanş İste"}
+            {sending ? "Revanş İste…" : "Revanş İste"}
           </button>
           <button
             onClick={onBack}
@@ -233,9 +218,7 @@ function FinishPanel({ matchId, liveStatus, userId, onBack }) {
         </div>
 
         {loading && (
-          <div className="mt-3 text-center text-xs text-gray-400">
-            Özet yükleniyor…
-          </div>
+          <div className="mt-3 text-center text-xs text-gray-400">Özet yükleniyor…</div>
         )}
       </div>
     </div>
@@ -252,7 +235,6 @@ export default function DuelloMatch({ matchId, userId }) {
   const [finished, setFinished] = useState(false);
   const [info, setInfo] = useState("");
 
-  // timer & polling
   const timerRef = useRef(null);
   const pollRef = useRef(null);
   const lastIndexRef = useRef(null);
@@ -260,7 +242,6 @@ export default function DuelloMatch({ matchId, userId }) {
 
   const perQ = Number(st?.ui?.per_question_seconds || 16);
 
-  // sayaç
   const restartTick = (start) => {
     clearInterval(timerRef.current);
     setSec(start);
@@ -269,7 +250,6 @@ export default function DuelloMatch({ matchId, userId }) {
     }, 1000);
   };
 
-  // status
   const fetchStatus = async () => {
     try {
       const data = await getMatchStatus({ matchId, user_id: userId });
@@ -313,7 +293,6 @@ export default function DuelloMatch({ matchId, userId }) {
     }
   };
 
-  // ilk yükleme + poll
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -335,7 +314,6 @@ export default function DuelloMatch({ matchId, userId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, userId]);
 
-  // süre 0 -> reveal
   useEffect(() => {
     if (!st || finished) return;
     if (sec === 0 && !revealGuardRef.current) {
@@ -352,7 +330,6 @@ export default function DuelloMatch({ matchId, userId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sec, finished]);
 
-  // finished olunca sayaç/poll dursun
   useEffect(() => {
     if (finished) {
       clearInterval(timerRef.current);
@@ -360,14 +337,13 @@ export default function DuelloMatch({ matchId, userId }) {
     }
   }, [finished]);
 
-  // cevap
   const submitAnswer = async (val) => {
     if (!st || answered || locked || sec <= 0) return;
     try {
       const res = await sendAnswer({
         matchId,
         user_id: userId,
-        answer: val, // "evet" | "hayır" | "bilmem"
+        answer: val,
         time_left_seconds: sec,
         max_time_seconds: perQ,
       });
@@ -378,7 +354,6 @@ export default function DuelloMatch({ matchId, userId }) {
     }
   };
 
-  // view helpers
   const progressPct = (() => {
     if (!st?.match) return 0;
     const cur = Number(st.match.current_index || 0);
@@ -396,7 +371,6 @@ export default function DuelloMatch({ matchId, userId }) {
   const btnBase =
     "px-4 py-3 rounded-2xl font-bold text-white shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition";
 
-  // ---- render
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 flex items-center justify-center">
@@ -413,7 +387,6 @@ export default function DuelloMatch({ matchId, userId }) {
     );
   }
 
-  // ----- FINISH PANEL -----
   if (st.finished) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
@@ -427,7 +400,6 @@ export default function DuelloMatch({ matchId, userId }) {
     );
   }
 
-  // ----- MATCH PLAY VIEW -----
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-cyan-700 px-3 py-6 flex items-center justify-center">
       <div className="bg-white/95 rounded-3xl shadow-2xl w-full max-w-xl p-6">
@@ -535,7 +507,7 @@ export default function DuelloMatch({ matchId, userId }) {
           </div>
         </div>
 
-        {/* Alt aksiyonlar – OYUN SIRASINDA sadece Lobiye Dön */}
+        {/* Oyun sırasında sadece Lobiye Dön */}
         <div className="mt-5">
           <Link
             to="/duello"
