@@ -129,13 +129,14 @@ function FinishPanel({ matchId, liveStatus, userId, onBack }) {
         </div>
 
         {/* İki kutu – sadece TOPLAM (daraltılmış) */}
-        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 place-items-center">
+        <div className="mt-5 grid justify-center gap-4 sm:[grid-template-columns:repeat(2,minmax(0,300px))]">
           {/* Sen */}
           <div
-            className={`w-full sm:w-[300px] rounded-2xl border bg-white p-3 sm:p-4 ${
-              meWon ? "border-emerald-300" : draw ? "border-gray-200" : "border-rose-200"
-            }`}
-          >
+  className={`w-full sm:w-[300px] max-w-[300px] rounded-2xl border bg-white p-3 sm:p-4 ${
+    meWon ? "border-emerald-300" : draw ? "border-gray-200" : "border-rose-200"
+  }`}
+>
+
             <div className="flex items-center justify-between">
               <div className="font-semibold text-gray-700 truncate">
                 {you?.ad} {you?.soyad}
@@ -159,10 +160,11 @@ function FinishPanel({ matchId, liveStatus, userId, onBack }) {
 
           {/* Rakip */}
           <div
-            className={`w-full sm:w-[300px] rounded-2xl border bg-white p-3 sm:p-4 ${
-              !draw && !meWon ? "border-emerald-300" : draw ? "border-gray-200" : "border-rose-200"
-            }`}
-          >
+  className={`w-full sm:w-[300px] max-w-[300px] rounded-2xl border bg-white p-3 sm:p-4 ${
+    !draw && !meWon ? "border-emerald-300" : draw ? "border-gray-200" : "border-rose-200"
+  }`}
+>
+
             <div className="flex items-center justify-between">
               <div className="font-semibold text-gray-700 truncate">
                 {opp?.ad} {opp?.soyad}
@@ -186,36 +188,23 @@ function FinishPanel({ matchId, liveStatus, userId, onBack }) {
         </div>
 
         {/* Butonlar */}
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-          <button
-            onClick={async () => {
-              try {
-                const s = await getSummary({ matchId, user_id: userId });
-                const a = s?.users?.a?.stats?.score ?? 0;
-                const b = s?.users?.b?.stats?.score ?? 0;
-                alert(`Özet\nA: ${a} — B: ${b}\nSonuç: ${s?.result?.code || "-"}`);
-              } catch (e) {
-                alert(e?.message || "Özet alınamadı.");
-              }
-            }}
-            className="px-4 py-2 rounded-xl bg-cyan-700 text-white font-bold hover:bg-cyan-800 active:scale-95"
-          >
-            Özeti Gör
-          </button>
-          <button
-            onClick={askRematch}
-            disabled={sending}
-            className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 active:scale-95 disabled:opacity-60"
-          >
-            {sending ? "Revanş İste…" : "Revanş İste"}
-          </button>
-          <button
-            onClick={onBack}
-            className="px-4 py-2 rounded-xl bg-gray-200 text-gray-800 font-bold hover:bg-gray-300 active:scale-95"
-          >
-            Lobiye Dön
-          </button>
-        </div>
+        {/* Butonlar (Özeti Gör kaldırıldı) */}
+<div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+  <button
+    onClick={askRematch}
+    disabled={sending}
+    className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 active:scale-95 disabled:opacity-60"
+  >
+    {sending ? "Revanş İste…" : "Revanş İste"}
+  </button>
+  <button
+    onClick={onBack}
+    className="px-4 py-2 rounded-xl bg-gray-200 text-gray-800 font-bold hover:bg-gray-300 active:scale-95"
+  >
+    Lobiye Dön
+  </button>
+</div>
+
 
         {loading && (
           <div className="mt-3 text-center text-xs text-gray-400">Özet yükleniyor…</div>
