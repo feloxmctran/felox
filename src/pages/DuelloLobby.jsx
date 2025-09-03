@@ -199,13 +199,22 @@ export default function DuelloLobby() {
 
   // Son oynadıkların (3 buton)
   const recentOpps = useMemo(() => {
-    const acc = [];
-    const add = (code, ad, soyad, ts = 0) => {
-      const C = String(code || "").toUpperCase();
-      if (!C) return;
-      if (acc.some((x) => x.code === C)) return;
+  const acc = [];
+  const add = (code, ad, soyad, ts = 0) => {
+    const C = String(code || "").toUpperCase();
+    if (!C) return;
+    const existing = acc.find((x) => x.code === C);
+    const hasName = !!((ad || "").trim() || (soyad || "").trim());
+    if (!existing) {
       acc.push({ code: C, ad: ad || "", soyad: soyad || "", ts });
-    };
+    } else if (hasName && !(existing.ad || existing.soyad)) {
+      // isim sonradan geldiyse kaydı yükselt
+      existing.ad = ad || existing.ad;
+      existing.soyad = soyad || existing.soyad;
+      existing.ts = Math.max(existing.ts || 0, ts || 0);
+    }
+  };
+
     (recentLocal || []).forEach((x) => add(x.code, x.ad, x.soyad, x.ts || 0));
     (recentRemote || []).forEach((x) => add(x.code, x.ad, x.soyad, x.ts || 0));
     (outgoing || []).forEach((i) =>
@@ -663,7 +672,7 @@ useEffect(() => {
           <div className="text-[15px] font-semibold text-gray-800 mb-2">Davet Gönder</div>
 
           <div className="mb-2">
-            <div className="text-sm text-gray-600 mb-1">Mod:</div>
+            
             <div className="flex gap-2 flex-wrap select-none">
               <button
                 type="button"
@@ -711,26 +720,33 @@ useEffect(() => {
           </div>
 
           {/* Son düello yaptıkların */}
-          {recentOpps.length > 0 && (
-            <div className="mt-2">
-              <div className="text-xs text-gray-500 mb-1">Son düello yaptıkların:</div>
-              <div className="flex flex-wrap gap-2">
-                {recentOpps.map((o, i) => (
-                  <button
-                    key={`${o.code}-${i}`}
-                    type="button"
-                    onClick={() => setTargetCode(String(o.code).toUpperCase())}
-                    className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-emerald-100 text-gray-800 text-sm font-semibold border border-gray-200"
-                    title={`Kodu doldur: ${o.code}`}
-                  >
-                    {o.ad || o.soyad
-                      ? `${o.ad || ""} ${o.soyad || ""}`.trim()
-                      : o.code}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+<div className="mt-2">
+  <div className="text-xs text-gray-500 mb-1">Son düello yaptıkların:</div>
+
+  {recentOpps.length === 0 ? (
+    <div className="text-xs text-gray-400">Henüz yok</div>
+  ) : (
+    <div className="flex flex-wrap gap-2">
+      {recentOpps.map((o, i) => (
+        <button
+          key={`${o.code}-${i}`}
+          type="button"
+          onClick={() => setTargetCode(String(o.code).toUpperCase())}
+          className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-emerald-100 text-gray-800 text-sm font-semibold border border-gray-200"
+          title={`Kodu doldur: ${o.code}`}
+        >
+          {(o.ad || o.soyad)
+            ? <>
+                {`${o.ad || ""} ${o.soyad || ""}`.trim()}
+                <span className="ml-1 text-gray-400 text-xs">({o.code})</span>
+              </>
+            : o.code}
+        </button>
+      ))}
+    </div>
+  )}
+</div>
+
 
           {info && <div className="mt-2 text-sm text-red-600">{info}</div>}
         </div>
