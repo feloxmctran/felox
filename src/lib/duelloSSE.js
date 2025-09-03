@@ -9,6 +9,18 @@ export function openDuelloEventStream({ apiUrl, userId, handlers = {}, withCrede
   es.onopen = () => console.debug("[SSE] open", url);
   es.onerror = (e) => console.debug("[SSE] error", e);
 
+  // Fallback: backend aynı olayı "message" olarak da gönderiyor (data.type ile)
+  es.onmessage = (e) => {
+    try {
+      const data = e?.data ? JSON.parse(e.data) : {};
+      const t = data?.type; // örn: "invite:cancelled"
+      if (t && handlers?.[t]) {
+        handlers[t](data, e);
+      }
+    } catch (_) { /* yut */ }
+  };
+
+
   // Backend’in gönderdiği isimli event’leri dinle
   const listen = (evt) => {
     es.addEventListener(evt, (ev) => {

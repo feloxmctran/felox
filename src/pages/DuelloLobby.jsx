@@ -14,6 +14,9 @@ import {
   activeMatch,
 } from "../api/duello";
 
+import { openDuelloEventStream } from "../lib/duelloSSE";
+
+
 /* === Felox universal user storage === */
 async function getFeloxUser() {
   let userStr = localStorage.getItem("felox_user");
@@ -300,6 +303,69 @@ export default function DuelloLobby() {
     fetchProfile();
     fetchLists();
   }, [user?.id, fetchProfile, fetchLists]);
+
+  // SSE: davet olaylarını canlı dinle (invite:new / accepted / rejected / cancelled)
+useEffect(() => {
+  if (!user?.id) return;
+
+  const es = openDuelloEventStream({
+    apiUrl: API,
+    userId: user.id,
+    handlers: {
+      // Sana yeni bir davet geldi -> incoming'e ekle (duplikeyi önle)
+      "invite:new": ({ invite, from }) => {
+        const iid = invite?.id;
+        if (!iid) return;
+        setIncoming((prev) => {
+          if (Array.isArray(prev) && prev.some((x) => x.id === iid)) return prev;
+          return [
+            {
+              id: iid,
+              mode: invite?.mode || "info",
+              status: "pending",
+              from: {
+                ad: from?.ad || "",
+                soyad: from?.soyad || "",
+                user_code: String(from?.user_code || "").toUpperCase(),
+              },
+            },
+            ...(prev || []),
+          ];
+        });
+      },
+
+      // Davetin kabul edildi -> listeleri temizle, maça git (match_id geldiyse)
+      "invite:accepted": ({ invite_id, match_id }) => {
+        setIncoming((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
+        setOutgoing((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
+        if (match_id) {
+          navigate(`/duello/${match_id}`);
+        } else {
+          // güvenlik için listeleri tazele
+          fetchLists();
+        }
+      },
+
+      // Davetin reddedildi -> giden listeden düş (alıcıya SSE gitmediği için incoming'de muhtemelen yok)
+      "invite:rejected": ({ invite_id }) => {
+        setOutgoing((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
+        // yine de temizlik amaçlı:
+        setIncoming((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
+      },
+
+      // Davet iptal edildi (gönderen iptal etti) -> her iki listeden de düş
+      "invite:cancelled": ({ invite_id }) => {
+        setOutgoing((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
+        setIncoming((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev));
+      },
+    },
+  });
+
+  return () => {
+    try { es?.close?.(); } catch {}
+  };
+}, [user?.id, navigate, fetchLists]);
+
 
   // Gönderen tarafta: pending outbox varken aktif maçı poll et
   useEffect(() => {
