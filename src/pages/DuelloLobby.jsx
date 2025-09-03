@@ -194,7 +194,7 @@ export default function DuelloLobby() {
     } catch (_) {}
   }, [user?.id]);
 
-  // Yaz
+  // Yaz (state değişince)
   useEffect(() => {
     try {
       const key = RECENTS_KEY(user?.id);
@@ -202,18 +202,27 @@ export default function DuelloLobby() {
     } catch (_) {}
   }, [recentLocal, user?.id]);
 
-  // Güvenli ekleyici
-  const pushRecent = useCallback((op) => {
-    const code = String(op?.code || "").toUpperCase();
-    if (!code) return;
-    const ad = op?.ad || "";
-    const soyad = op?.soyad || "";
-    const ts = Date.now();
-    setRecentLocal((prev) => {
-      const without = (prev || []).filter((x) => x.code !== code);
-      return [{ code, ad, soyad, ts }, ...without].slice(0, 12);
-    });
-  }, []);
+  // Güvenli ekleyici (WRITE-THROUGH)
+  const pushRecent = useCallback(
+    (op) => {
+      const code = String(op?.code || "").toUpperCase();
+      if (!code) return;
+      const ad = op?.ad || "";
+      const soyad = op?.soyad || "";
+      const ts = Date.now();
+
+      setRecentLocal((prev) => {
+        const without = (prev || []).filter((x) => x.code !== code);
+        const next = [{ code, ad, soyad, ts }, ...without].slice(0, 12);
+        // Hemen persist et (navigate/unmount olsa bile kaçmasın)
+        try {
+          localStorage.setItem(RECENTS_KEY(user?.id), JSON.stringify(next));
+        } catch (_) {}
+        return next;
+      });
+    },
+    [user?.id]
+  );
 
   // Son oynadıkların (3 buton)
   const recentOpps = useMemo(() => {
@@ -407,13 +416,36 @@ export default function DuelloLobby() {
             ];
           });
         },
+        // Kabul event'i -> kabul eden tarafta da mutlaka son rakiplere yaz
         "invite:accepted": ({ invite_id, match_id }) => {
-          setIncoming((prev) =>
-            Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev
-          );
+          let opp = null;
+
+          // Eğer bu cihaz "alıcı" ise, incoming'de kayıt vardır; oradan çek
+          setIncoming((prev) => {
+            if (Array.isArray(prev)) {
+              const item = prev.find((x) => x.id === invite_id);
+              if (item?.from?.user_code) {
+                opp = {
+                  code: item.from.user_code,
+                  ad: item.from.ad,
+                  soyad: item.from.soyad,
+                };
+              }
+              return prev.filter((x) => x.id !== invite_id);
+            }
+            return prev;
+          });
+
+          // Gönderensek outgoing'den düş (pushRecent gönderen tarafta zaten yapılmıştı)
           setOutgoing((prev) =>
             Array.isArray(prev) ? prev.filter((x) => x.id !== invite_id) : prev
           );
+
+          // Kabul başka cihazdan yapılsa bile bu tarafa da yaz
+          if (opp?.code) {
+            pushRecent(opp);
+          }
+
           if (match_id) {
             navigate(`/duello/${match_id}`);
           } else {
@@ -444,7 +476,7 @@ export default function DuelloLobby() {
         es?.close?.();
       } catch {}
     };
-  }, [user?.id, navigate, fetchLists]);
+  }, [user?.id, navigate, fetchLists, pushRecent]);
 
   // Gönderen tarafta: pending outbox varken aktif maçı poll et
   useEffect(() => {
