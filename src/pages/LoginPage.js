@@ -1,25 +1,34 @@
+// src/pages/LoginPage.js
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Logo from "../components/Logo";
 
-// Kaç gün boyunca otomatik giriş geçerli olsun? (İstersen 30’u büyüt/küçült, istemezsen null/0 yap)
+/**
+ * Otomatik giriş süresi (rolling window). 0/null => sınırsız.
+ * İstersen 7/14/60 gün yapabilirsin.
+ */
 const AUTO_LOGIN_MAX_DAYS = 30;
 
-// URL query param helper
+/** Sunucu doğrulaması başarısızsa da (ör. offline) otomatik geçişe izin ver */
+const ALLOW_OFFLINE_AUTOLOGIN = true;
+
+/** URL query helper */
 const qs = (k) => new URLSearchParams(window.location.search).get(k);
 
+const apiUrl =
+  process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
-const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
-
-// Web/Mobil universal getter
-async function getFeloxUser() {
-  let userStr = localStorage.getItem("felox_user");
-  // Eğer mobil platformdaysa Preferences'tan oku
-  if (
-    (!userStr) &&
+/** Ortak: Native mi? */
+const isNative = () =>
+  !!(
     window.Capacitor &&
     (window.Capacitor.isNative || window.Capacitor.isNativePlatform?.())
-  ) {
+  );
+
+/** Web/Mobil universal getter */
+async function getFeloxUser() {
+  let userStr = localStorage.getItem("felox_user");
+  if (!userStr && isNative()) {
     try {
       const { Preferences } = await import("@capacitor/preferences");
       const { value } = await Preferences.get({ key: "felox_user" });
@@ -29,14 +38,11 @@ async function getFeloxUser() {
   return userStr ? JSON.parse(userStr) : null;
 }
 
-// Universal setter (web + mobil)
+/** Web/Mobil universal setter (+ lastLoginTs güncelle) */
 async function setFeloxUser(user) {
-  const payload = { ...user, _lastLoginTs: Date.now() }; // ⬅️ son giriş zamanı
+  const payload = { ...user, _lastLoginTs: Date.now() };
   localStorage.setItem("felox_user", JSON.stringify(payload));
-  if (
-    window.Capacitor &&
-    (window.Capacitor.isNative || window.Capacitor.isNativePlatform?.())
-  ) {
+  if (isNative()) {
     try {
       const { Preferences } = await import("@capacitor/preferences");
       await Preferences.set({
@@ -47,63 +53,69 @@ async function setFeloxUser(user) {
   }
 }
 
+/** Sadece lastLoginTs'i güncelle (rolling window uzasın) */
+async function touchFeloxUser() {
+  const u = await getFeloxUser();
+  if (u) await setFeloxUser(u);
+}
+
+/** Rol → route */
+function roleToPath(roleRaw) {
+  const role = String(roleRaw || "").toUpperCase();
+  if (role === "ADMIN") return "/admin";
+  if (role === "EDITOR") return "/editor";
+  return "/user";
+}
+
+/** Oturum taze mi? */
+function isFresh(user) {
+  if (!AUTO_LOGIN_MAX_DAYS || !Number.isFinite(AUTO_LOGIN_MAX_DAYS)) return true;
+  const last = Number(user?._lastLoginTs || 0);
+  if (!last) return false;
+  const freshMs = AUTO_LOGIN_MAX_DAYS * 24 * 60 * 60 * 1000;
+  return Date.now() - last <= freshMs;
+}
 
 export default function LoginPage() {
+  const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
   const [message, setMessage] = useState("");
-  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
 
-  // Otomatik yönlendir (Kullanıcı gerçekten backend'de varsa!)
+  // Oto-yönlendirme (kayıt varsa ve tazeyse)
   useEffect(() => {
-  (async () => {
-    // 3.a) URL ile login’i zorla göster: /login?force=1
-    if (qs("force") === "1") return;
+    (async () => {
+      if (qs("force") === "1") return; // query ile formu zorla göster
 
-    // 3.b) Kaydedilmiş kullanıcıyı al
-    const user = await getFeloxUser();
-    if (!user || !user.id || !user.role) return;
+      const saved = await getFeloxUser();
+      if (!saved || !saved.id || !saved.role) return;
+      if (!isFresh(saved)) return;
 
-    // 3.c) Süre sınırı (opsiyonel): 30 gün geçtiyse otomatik geçiş yapma
-    if (AUTO_LOGIN_MAX_DAYS && Number.isFinite(AUTO_LOGIN_MAX_DAYS)) {
-      const last = Number(user._lastLoginTs || 0);
-      const freshMs = AUTO_LOGIN_MAX_DAYS * 24 * 60 * 60 * 1000;
-      if (!last || (Date.now() - last) > freshMs) {
-        return; // form görünsün
-      }
-    }
+      const path = roleToPath(saved.role);
 
-    // 3.d) Backend doğrula: kullanıcı gerçekten var mı?
-    try {
-      const res = await fetch(`${apiUrl}/api/user/${user.id}/exists`);
-      const data = await res.json();
-      if (!data.exists) {
-        // bozuk kayıt -> temizle
-        localStorage.removeItem("felox_user");
-        if (
-          window.Capacitor &&
-          (window.Capacitor.isNative || window.Capacitor.isNativePlatform?.())
-        ) {
-          try {
-            const { Preferences } = await import("@capacitor/preferences");
-            await Preferences.remove({ key: "felox_user" });
-          } catch {}
+      if (navigator.onLine) {
+        try {
+          const res = await fetch(`${apiUrl}/api/user/${saved.id}/exists`);
+          const data = await res.json();
+          if (data?.exists) {
+            await touchFeloxUser();
+            navigate(path, { replace: true });
+          }
+          return;
+        } catch {
+          // offline fallback
         }
-        return;
       }
 
-      // 3.e) Rolüne göre yönlendir
-      const role = String(user.role).toUpperCase();
-      const path = role === "ADMIN" ? "/admin" : role === "EDITOR" ? "/editor" : "/user";
-      navigate(path, { replace: true });
-    } catch {
-      // Sunucuya ulaşılamazsa, formu göster (sessiz kal)
-    }
-  })();
-}, [navigate]);
-
+      if (ALLOW_OFFLINE_AUTOLOGIN) {
+        await touchFeloxUser();
+        navigate(path, { replace: true });
+      }
+    })();
+  }, [navigate]);
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
   };
 
   const handleSubmit = async (e) => {
@@ -113,26 +125,26 @@ export default function LoginPage() {
       setMessage("Lütfen e-posta ve şifre girin.");
       return;
     }
+
+    setLoading(true);
     try {
       const res = await fetch(`${apiUrl}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-
       const data = await res.json();
-      if (data.success) {
+
+      if (data?.success && data?.user) {
         await setFeloxUser(data.user);
-        const role = data.user.role?.toUpperCase();
-        if (role === "USER") navigate("/user");
-        else if (role === "EDITOR") navigate("/editor");
-        else if (role === "ADMIN") navigate("/admin");
-        else setMessage("Bilinmeyen rol!");
+        navigate(roleToPath(data.user.role), { replace: true });
       } else {
-        setMessage(data.error || "Giriş başarısız.");
+        setMessage(data?.error || "Giriş başarısız.");
       }
-    } catch (err) {
+    } catch {
       setMessage("Sunucuya bağlanılamıyor.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -140,11 +152,16 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-sky-500 to-blue-700">
       <div className="bg-white/90 rounded-2xl shadow-xl p-8 w-full max-w-md">
         <Logo />
-        <h2 className="text-3xl font-bold mb-6 text-center text-sky-700">Giriş Yap</h2>
-        
+        <h2 className="text-3xl font-bold mb-6 text-center text-sky-700">
+          Giriş Yap
+        </h2>
+
+        {/* bilgi kutusu yok */}
+
         {message && (
           <div className="mb-4 text-center text-sm text-red-600">{message}</div>
         )}
+
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <input
             className="border p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400"
@@ -153,6 +170,8 @@ export default function LoginPage() {
             placeholder="E-posta"
             value={form.email}
             onChange={handleChange}
+            autoComplete="email"
+            inputMode="email"
           />
           <input
             className="border p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400"
@@ -161,14 +180,17 @@ export default function LoginPage() {
             placeholder="Şifre"
             value={form.password}
             onChange={handleChange}
+            autoComplete="current-password"
           />
           <button
-            className="bg-sky-600 text-white rounded-xl p-3 font-semibold hover:bg-sky-700 transition mt-2"
+            className="bg-sky-600 text-white rounded-xl p-3 font-semibold hover:bg-sky-700 transition mt-2 disabled:opacity-60"
             type="submit"
+            disabled={loading}
           >
-            Giriş Yap
+            {loading ? "Giriş yapılıyor…" : "Giriş Yap"}
           </button>
         </form>
+
         <div className="text-center mt-4 text-gray-500">
           Hesabınız yok mu?{" "}
           <a href="/register" className="text-sky-700 underline">

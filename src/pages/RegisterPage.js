@@ -142,7 +142,7 @@ export default function RegisterPage() {
             <option value="">Cinsiyet</option>
             <option value="erkek">Erkek</option>
             <option value="kadin">Kadın</option>
-            <option value="diger">Diğer</option>
+            
           </select>
           <input className="border p-3 rounded-xl" placeholder="Meslek" name="meslek" value={form.meslek} onChange={handleChange} />
           <input className="border p-3 rounded-xl" placeholder="Şehir" name="sehir" value={form.sehir} onChange={handleChange} />
