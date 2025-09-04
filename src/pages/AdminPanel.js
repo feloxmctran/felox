@@ -34,6 +34,79 @@ async function removeFeloxUser() {
 
 const apiUrl = process.env.REACT_APP_API_URL || "https://felox-backend.onrender.com";
 
+/* =========================
+   ADMIN AUTH & FETCH HELPERS
+   ========================= */
+function getAdminSecretInteractive() {
+  let s = localStorage.getItem("admin_secret");
+  if (!s) {
+    s = window.prompt("Admin secret (x-admin-secret) nedir?");
+    if (s) localStorage.setItem("admin_secret", s);
+  }
+  return s || "";
+}
+
+function setAdminSecret(newVal) {
+  if (newVal === null || newVal === undefined) return;
+  localStorage.setItem("admin_secret", String(newVal));
+}
+
+async function adminFetch(path, opts = {}) {
+  const secret = getAdminSecretInteractive();
+  const headers = {
+    ...(opts.headers || {}),
+    "x-admin-secret": secret
+  };
+  // JSON body varsa content-type ekle
+  if (opts.body && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  const res = await fetch(`${apiUrl}${path}`, { ...opts, headers });
+  // 403 olursa secret'ı yeniden sor
+  if (res.status === 403) {
+    localStorage.removeItem("admin_secret");
+  }
+  return res;
+}
+
+/* ===============
+   SETTINGS HELPERS
+   =============== */
+const APP_SETTING_KEYS = {
+  dailyContestSize: "daily_contest_size",
+  duelQuestionsPerMatch: "duel_questions_per_match",
+  ladderMinAttempts: "ladder_min_attempts",
+  ladderRequiredRate: "ladder_required_rate",
+  ladderQuestionsLimit: "ladder_questions_limit",
+};
+
+async function getSetting(key) {
+  const res = await adminFetch(`/api/admin/settings/${encodeURIComponent(key)}`, {
+    method: "GET"
+  });
+  if (!res.ok) throw new Error(`Ayar okunamadı: ${key}`);
+  const j = await res.json();
+  return j?.value;
+}
+
+async function setSetting(key, value) {
+  const res = await adminFetch(`/api/admin/settings`, {
+    method: "POST",
+    body: JSON.stringify({ key, value })
+  });
+  if (!res.ok) throw new Error(`Ayar kaydedilemedi: ${key}`);
+  return res.json();
+}
+
+async function setDailySizeOverrideNext(size) {
+  const res = await adminFetch(`/api/admin/daily/contest-size-next`, {
+    method: "POST",
+    body: JSON.stringify({ size: Number(size) })
+  });
+  if (!res.ok) throw new Error("Yarına özel günlük soru sayısı kaydedilemedi");
+  return res.json(); // { day_key, size }
+}
+
 export default function AdminPanel() {
   const navigate = useNavigate();
   const [admin, setAdmin] = useState(null);
@@ -47,6 +120,19 @@ export default function AdminPanel() {
   const [selectedSurvey, setSelectedSurvey] = useState(null);
   const [surveyQuestions, setSurveyQuestions] = useState([]);
 
+  // Ayarlar
+  const [settings, setSettings] = useState({
+    dailyContestSize: "",
+    duelQuestionsPerMatch: "",
+    ladderMinAttempts: "",
+    ladderRequiredRate: "",
+    ladderQuestionsLimit: ""
+  });
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsStatus, setSettingsStatus] = useState({}); // { field: "✓" | "Hata" }
+  const [nextDailySize, setNextDailySize] = useState("");
+  const [nextDailyStatus, setNextDailyStatus] = useState("");
+
   // İlk açılışta universal storage'dan admini çek
   useEffect(() => {
     getFeloxUser().then((user) => {
@@ -55,24 +141,69 @@ export default function AdminPanel() {
     });
   }, [navigate]);
 
-  // İstatistikleri çek
+  // İstatistikleri çek (ADMIN header ile)
   const fetchStats = async () => {
-    const res = await fetch(`${apiUrl}/api/admin/statistics`);
-    const data = await res.json();
-    if (data.success) setStats(data);
+    try {
+      const res = await adminFetch(`/api/admin/statistics`, { method: "GET" });
+      const data = await res.json();
+      if (data.success) setStats(data);
+      else setStats(null);
+    } catch (e) {
+      console.error(e);
+      setStats(null);
+    }
   };
 
-  // Tüm anketleri çek
+  // Tüm anketleri çek (ADMIN header ile)
   const fetchSurveys = async () => {
-    const res = await fetch(`${apiUrl}/api/admin/surveys`);
-    const data = await res.json();
-    if (data.success) setSurveys(data.surveys);
-    else setSurveys([]);
+    try {
+      const res = await adminFetch(`/api/admin/surveys`, { method: "GET" });
+      const data = await res.json();
+      if (data.success) setSurveys(data.surveys);
+      else setSurveys([]);
+    } catch (e) {
+      console.error(e);
+      setSurveys([]);
+    }
   };
 
-  useEffect(() => { fetchStats(); fetchSurveys(); }, []);
+  // Ayarları çek
+  const loadSettings = async () => {
+    setSettingsLoading(true);
+    setSettingsStatus({});
+    try {
+      const [
+        dailyContestSize,
+        duelQuestionsPerMatch,
+        ladderMinAttempts,
+        ladderRequiredRate,
+        ladderQuestionsLimit
+      ] = await Promise.all([
+        getSetting(APP_SETTING_KEYS.dailyContestSize),
+        getSetting(APP_SETTING_KEYS.duelQuestionsPerMatch),
+        getSetting(APP_SETTING_KEYS.ladderMinAttempts),
+        getSetting(APP_SETTING_KEYS.ladderRequiredRate),
+        getSetting(APP_SETTING_KEYS.ladderQuestionsLimit),
+      ]);
 
-  // Detaya gir, soruları çek
+      setSettings({
+        dailyContestSize: valueToInput(dailyContestSize),
+        duelQuestionsPerMatch: valueToInput(duelQuestionsPerMatch),
+        ladderMinAttempts: valueToInput(ladderMinAttempts),
+        ladderRequiredRate: valueToInput(ladderRequiredRate),
+        ladderQuestionsLimit: valueToInput(ladderQuestionsLimit)
+      });
+    } catch (e) {
+      console.error("Ayarlar yüklenemedi:", e);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  // İlk yüklemede: istatistikler, anketler, ayarlar
+  useEffect(() => { fetchStats(); fetchSurveys(); loadSettings(); }, []);
+
+  // Detaya gir, soruları çek (NOT admin)
   const fetchSurveyDetails = async (surveyId) => {
     const res = await fetch(`${apiUrl}/api/surveys/${surveyId}/details`);
     const data = await res.json();
@@ -83,33 +214,42 @@ export default function AdminPanel() {
     }
   };
 
-  // Onayla/Reddet
+  // Onayla/Reddet (ADMIN)
   const handleStatus = async (surveyId, status) => {
-    const res = await fetch(`${apiUrl}/api/surveys/${surveyId}/status`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      fetchSurveys();
-      setMode("list");
-    } else {
+    try {
+      const res = await adminFetch(`/api/surveys/${surveyId}/status`, {
+        method: "POST",
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchSurveys();
+        setMode("list");
+      } else {
+        alert("Durum değiştirilemedi!");
+      }
+    } catch (e) {
+      console.error(e);
       alert("Durum değiştirilemedi!");
     }
   };
 
-  // Soru sil
+  // Soru sil (ADMIN)
   const handleDeleteQuestion = async (questionId) => {
     if (!window.confirm("Bu soruyu silmek istediğinize emin misiniz?")) return;
-    const res = await fetch(`${apiUrl}/api/questions/${questionId}/delete`, {
-      method: "POST"
-    });
-    const data = await res.json();
-    if (data.success) {
-      // Soruları yenile
-      fetchSurveyDetails(selectedSurvey.id);
-    } else {
+    try {
+      const res = await adminFetch(`/api/questions/${questionId}/delete`, {
+        method: "POST"
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Soruları yenile
+        fetchSurveyDetails(selectedSurvey.id);
+      } else {
+        alert("Soru silinemedi!");
+      }
+    } catch (e) {
+      console.error(e);
       alert("Soru silinemedi!");
     }
   };
@@ -118,6 +258,77 @@ export default function AdminPanel() {
     await removeFeloxUser();
     navigate("/login");
   };
+
+  // ======= SETTINGS UI handlers =======
+  function valueToInput(v) {
+    if (v === null || v === undefined) return "";
+    // sayı veya string olabilir; input için stringle
+    return String(v);
+  }
+
+  function parseValueForKey(key, raw) {
+    if (key === APP_SETTING_KEYS.ladderRequiredRate) {
+      const f = parseFloat(raw);
+      if (!isFinite(f) || f < 0 || f > 1) {
+        throw new Error("Başarı oranı 0 ile 1 arasında olmalı (örn: 0.8)");
+      }
+      return f;
+    }
+    const n = parseInt(raw, 10);
+    if (!isFinite(n)) throw new Error("Değer sayı olmalı");
+    return n;
+  }
+
+  async function saveOne(field) {
+    const key = APP_SETTING_KEYS[field];
+    if (!key) return;
+    try {
+      setSettingsStatus((s) => ({ ...s, [field]: "Kaydediliyor..." }));
+      const val = parseValueForKey(key, settings[field]);
+      await setSetting(key, val);
+      setSettingsStatus((s) => ({ ...s, [field]: "✓ Kaydedildi" }));
+    } catch (e) {
+      console.error(e);
+      setSettingsStatus((s) => ({ ...s, [field]: "Hata" }));
+      alert(e.message || "Kaydedilemedi");
+    }
+  }
+
+  async function saveAll() {
+    const fields = Object.keys(APP_SETTING_KEYS);
+    for (const f of fields) {
+      // tek tek hata yakalayalım, diğerleri devam etsin
+      try { await saveOne(f); } catch {}
+    }
+  }
+
+  async function setTomorrowOverride() {
+    setNextDailyStatus("Kaydediliyor...");
+    try {
+      const n = parseInt(nextDailySize, 10);
+      if (!isFinite(n) || n < 1 || n > 200) {
+        throw new Error("1-200 arası bir sayı girin");
+      }
+      const j = await setDailySizeOverrideNext(n);
+      setNextDailyStatus(`✓ ${j.day_key} için ${j.size} kaydedildi`);
+    } catch (e) {
+      console.error(e);
+      setNextDailyStatus("Hata");
+      alert(e.message || "Yarına özel değer kaydedilemedi");
+    }
+  }
+
+  function changeAdminSecret() {
+    const cur = localStorage.getItem("admin_secret") || "";
+    const nv = window.prompt("Yeni admin secret giriniz:", cur);
+    if (nv !== null) {
+      setAdminSecret(nv);
+      // hemen tekrar yükleyelim ki header güncellensin
+      fetchStats();
+      fetchSurveys();
+      loadSettings();
+    }
+  }
 
   // Henüz admin yüklenmediyse ekrana boş dön
   if (!admin) return <div className="text-center mt-10">Yükleniyor...</div>;
@@ -128,12 +339,22 @@ export default function AdminPanel() {
 
         <h2 className="text-3xl font-bold text-orange-700 mb-2">Admin Paneli</h2>
         <p className="text-md text-gray-700 mb-4">Hoş geldiniz, <b>{admin?.ad}</b>!</p>
-        <button
-          onClick={handleLogout}
-          className="mb-5 px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition"
-        >
-          Çıkış Yap
-        </button>
+
+        <div className="flex items-center justify-center gap-2 mb-5">
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition"
+          >
+            Çıkış Yap
+          </button>
+          <button
+            onClick={changeAdminSecret}
+            className="px-4 py-2 bg-slate-600 text-white rounded-xl hover:bg-slate-700 transition"
+            title="x-admin-secret değerini değiştir"
+          >
+            Admin Secret Değiştir
+          </button>
+        </div>
 
         {/* İstatistik Kutusu */}
         <div className="max-w-2xl mx-auto bg-orange-50 rounded-xl shadow p-6 mb-8">
@@ -152,6 +373,97 @@ export default function AdminPanel() {
               <div>🤔 “Bilmem” Denilen: <b>{stats.total_bilmem}</b></div>
             </div>
           )}
+        </div>
+
+        {/* Uygulama Ayarları */}
+        <div className="max-w-2xl mx-auto bg-orange-50 rounded-xl shadow p-6 mb-8 text-left">
+          <h3 className="text-lg font-bold mb-4 text-orange-800">Uygulama Ayarları</h3>
+
+          <div className="text-sm text-gray-600 mb-4">
+            Bu değerler <b>publish gerektirmeden</b> anında aktif olur. İlk satırdaki “Yükle” ile
+            sunucudaki mevcut değeri çekebilir, “Kaydet” ile güncelleyebilirsiniz.
+          </div>
+
+          <div className="space-y-3">
+            {/* Row generator */}
+            {[
+              { field: "dailyContestSize", label: "Günlük soru sayısı (kalıcı)", min:1, max:200, step:1 },
+              { field: "duelQuestionsPerMatch", label: "Düello soru sayısı", min:1, max:50, step:1 },
+              { field: "ladderMinAttempts", label: "Kademeli: minimum deneme", min:1, max:1000, step:1 },
+              { field: "ladderRequiredRate", label: "Kademeli: başarı oranı (0-1)", min:0, max:1, step:0.01 },
+              { field: "ladderQuestionsLimit", label: "Kademeli: soru limiti", min:5, max:1000, step:1 },
+            ].map((cfg) => (
+              <div key={cfg.field} className="flex items-center">
+                <label className="w-1/2 md:w-1/2 pr-3 text-gray-800">{cfg.label}</label>
+                <input
+                  type="number"
+                  className="flex-1 border rounded px-3 py-2"
+                  min={cfg.min}
+                  max={cfg.max}
+                  step={cfg.step}
+                  value={settings[cfg.field]}
+                  onChange={(e) =>
+                    setSettings((s) => ({ ...s, [cfg.field]: e.target.value }))
+                  }
+                  disabled={settingsLoading}
+                />
+                <button
+                  className="ml-2 px-3 py-2 bg-slate-600 text-white rounded hover:bg-slate-700"
+                  onClick={() => saveOne(cfg.field)}
+                  disabled={settingsLoading}
+                >
+                  Kaydet
+                </button>
+                <button
+                  className="ml-2 px-3 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400"
+                  onClick={() => loadSettings()}
+                  title="Tüm değerleri yeniden yükle"
+                  disabled={settingsLoading}
+                >
+                  Yükle
+                </button>
+                <span className="ml-2 text-xs text-gray-600">
+                  {settingsStatus[cfg.field] || ""}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex justify-end mt-4">
+            <button
+              className="px-4 py-2 bg-orange-600 text-white rounded-xl hover:bg-orange-700"
+              onClick={saveAll}
+              disabled={settingsLoading}
+              title="Hepsini Kaydet"
+            >
+              Hepsini Kaydet
+            </button>
+          </div>
+
+          <hr className="my-5" />
+
+          {/* Yarına özel override */}
+          <div className="flex items-center">
+            <label className="w-1/2 md:w-1/2 pr-3 text-gray-800">
+              Günlük soru sayısı (yarına özel override)
+            </label>
+            <input
+              type="number"
+              className="flex-1 border rounded px-3 py-2"
+              min={1}
+              max={200}
+              step={1}
+              value={nextDailySize}
+              onChange={(e) => setNextDailySize(e.target.value)}
+            />
+            <button
+              className="ml-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+              onClick={setTomorrowOverride}
+            >
+              Yarına Ayarla
+            </button>
+            <span className="ml-2 text-xs text-gray-600">{nextDailyStatus}</span>
+          </div>
         </div>
 
         {/* Anket Listesi */}
