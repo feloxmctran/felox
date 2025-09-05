@@ -2689,9 +2689,7 @@ const ladderSessionRate = useMemo(() => {
                     <div className="text-[15px] font-semibold text-gray-800 line-clamp-2">
                       {s.title}
                     </div>
-                    <span className="shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-700 border border-cyan-100">
-                      {Number(s?.question_count ?? s?.questions_count ?? s?.total_questions ?? s?.count ?? 0) || "?"} soru
-                    </span>
+                  
                   </div>
                   <div className="mt-2 flex gap-2">
                     <button
