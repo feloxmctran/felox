@@ -2310,6 +2310,9 @@ const ladderSessionRate = useMemo(() => {
 
                 <RankRow points={totalPoints} nf={nf} />
 
+                    <div className="mt-1">{renderBestTitleBadge()}</div>
+
+
 
                 {/* Hız kademesi + hız bilgisi */}
                 {speedTier?.tier ? (
@@ -2409,8 +2412,7 @@ const ladderSessionRate = useMemo(() => {
           <div className="flex flex-col gap-2 mt-3">
 
            
-           {/* En iyi başlık cümlesi */}
-<div className="text-center -mt-1 leading-tight">{renderBestTitleBadge()}</div>
+        
 
 
             {/* Günün Yarışması */}
@@ -2980,10 +2982,6 @@ const ladderSessionRate = useMemo(() => {
     )}
   </div>
 )}
-
-
-
-
 
             {/* Üst kutular */}
             <div className="w-full grid grid-cols-3 gap-2 mt-3">
