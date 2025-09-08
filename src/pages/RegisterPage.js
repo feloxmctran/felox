@@ -129,8 +129,22 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-400 to-green-700">
       <div className="bg-white/90 rounded-2xl shadow-xl p-8 w-full max-w-md">
-        <Logo />
-        <h2 className="text-3xl font-bold mb-6 text-center text-emerald-700">Kayıt Ol</h2>
+  {/* BİLGİKÜRE brand */}
+  <div className="flex flex-col items-center mb-4">
+    <div className="flex items-center gap-2">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" className="text-emerald-500">
+        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5"/>
+        <path d="M3 12h18M12 3v18M5 7.5h14M5 16.5h14M9 3s-2 3.5-2 9 2 9 2 9m6-18s2 3.5 2 9-2 9-2 9" stroke="currentColor" strokeWidth="1.1"/>
+      </svg>
+      <span className="text-3xl font-extrabold bg-gradient-to-r from-sky-500 to-emerald-500 bg-clip-text text-transparent tracking-wide">
+        BİLGİKÜRE
+      </span>
+    </div>
+    <div className="text-[12px] text-gray-500 mt-1">Bilgin kadar yarış, bilgin kadar kazan.</div>
+  </div>
+
+  <h2 className="text-3xl font-bold mb-6 text-center text-emerald-700">Kayıt Ol</h2>
+
         {message && (
           <div className="mb-4 text-center text-sm text-red-600">{message}</div>
         )}
@@ -155,6 +169,14 @@ export default function RegisterPage() {
         <div className="text-center mt-4 text-gray-500">
           Zaten hesabın var mı? <a href="/login" className="text-emerald-700 underline">Giriş Yap</a>
         </div>
+
+        <div className="mt-6 text-center select-none">
+  <span className="text-[11px] text-gray-400 mr-1 align-baseline">powered by</span>
+  <span className="inline-block align-baseline scale-75 opacity-80">
+    <Logo />
+  </span>
+</div>
+
       </div>
     </div>
   );

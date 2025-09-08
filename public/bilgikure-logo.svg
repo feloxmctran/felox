@@ -1,0 +1,18 @@
+<svg viewBox="0 0 160 40" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1">
+      <stop offset="0" stop-color="#06b6d4"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <!-- icon -->
+  <g transform="translate(6,6)">
+    <circle cx="14" cy="14" r="14" fill="url(#g)" opacity="0.15"/>
+    <circle cx="14" cy="14" r="10" fill="none" stroke="url(#g)" stroke-width="2"/>
+    <path d="M4 14h20M14 4v20" stroke="url(#g)" stroke-width="1.8" stroke-linecap="round" opacity="0.9"/>
+  </g>
+  <!-- wordmark -->
+  <text x="48" y="26" font-family="Inter, ui-sans-serif, system-ui" font-weight="800" font-size="22" fill="url(#g)">
+    BilgiKüre
+  </text>
+</svg>

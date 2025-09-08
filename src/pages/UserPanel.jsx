@@ -2387,7 +2387,7 @@ const ladderSessionRate = useMemo(() => {
             </div> {/* avatar satırı */}
 
             {/* Başlık etiketi */}
-            {renderBestTitleBadge()}
+            
 
             <div className="w-full grid grid-cols-3 gap-2 mt-3">
               <Box title="Puanın" value={nf.format(totalPoints)} />
@@ -2406,7 +2406,13 @@ const ladderSessionRate = useMemo(() => {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 mt-6">
+          <div className="flex flex-col gap-2 mt-3">
+
+           
+           {/* En iyi başlık cümlesi */}
+<div className="text-center -mt-1 leading-tight">{renderBestTitleBadge()}</div>
+
+
             {/* Günün Yarışması */}
             <button
   className="w-full py-3 rounded-2xl font-bold bg-blue-600 hover:bg-blue-800 text-white shadow-lg active:scale-95 transition"

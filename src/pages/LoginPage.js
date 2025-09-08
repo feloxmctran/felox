@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Logo from "../components/Logo";
+import BilgikureLogo from "../components/BilgikureLogo";
+
 
 /**
  * Otomatik giriş süresi (rolling window). 0/null => sınırsız.
@@ -151,10 +153,13 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-sky-500 to-blue-700">
       <div className="bg-white/90 rounded-2xl shadow-xl p-8 w-full max-w-md">
-        <Logo />
-        <h2 className="text-3xl font-bold mb-6 text-center text-sky-700">
-          Giriş Yap
-        </h2>
+  <div className="mb-4">
+    <BilgikureLogo />
+  </div>
+  <h2 className="text-3xl font-bold mb-6 text-center text-sky-700">
+    Giriş Yap
+  </h2>
+
 
         {/* bilgi kutusu yok */}
 
@@ -197,7 +202,20 @@ export default function LoginPage() {
             Kayıt Ol
           </a>
         </div>
+
+     <div className="mt-6 text-center select-none">
+  <span className="text-[11px] text-gray-400 align-baseline">powered by </span>
+  <span className="text-[12px] font-extrabold tracking-wide
+                   bg-gradient-to-r from-sky-500 to-emerald-400
+                   bg-clip-text text-transparent align-baseline">
+    FELOX
+  </span>
+</div>
+
+
       </div>
     </div>
+
+    
   );
 }
