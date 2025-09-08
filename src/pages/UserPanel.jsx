@@ -2355,12 +2355,30 @@ const ladderSessionRate = useMemo(() => {
 )}
 
 
-{typeof dailyStatus?.streak_current === "number" && dailyStatus.streak_current > 0 && (
-  <div className="mt-1 text-[13px] text-cyan-700 font-semibold">
+{typeof dailyStatus?.streak_current === "number" && (
+<div className="relative mt-1 text-[13px] text-cyan-700 font-semibold">
+  {/* yazı */}
+  <span className="inline-block leading-5 pr-16 sm:pr-20">
     {dailyStatus.streak_current} günlük serin var
-    {Number(dailyStatus?.today_bonus_per_correct) > 0 ? ` +${Number(dailyStatus.today_bonus_per_correct)}` : ""}
-  </div>
+    {Number(dailyStatus?.today_bonus_per_correct) > 0
+      ? ` +${Number(dailyStatus.today_bonus_per_correct)}`
+      : ""}
+  </span>
+
+  {/* resim — büyütüldü */}
+  {dailyStatus?.tree?.key && (
+    <img
+      src={`/tree/${dailyStatus.tree.key}.png`}
+      alt={`ağaç ${dailyStatus.tree.key}`}
+      className="absolute right-0 top-1/2 -translate-y-1/2 object-contain w-12 h-12 sm:w-14 sm:h-14"
+    />
+  )}
+</div>
+
+
+
 )}
+
 
 
 
@@ -2933,23 +2951,31 @@ const ladderSessionRate = useMemo(() => {
 
             {/* ← BUNUN HEMEN ALTINA EKLEYİN */}
 {typeof dailyStatus?.streak_current === "number" && (
-  <div className="mt-1">
+  <div className="mb-2 flex items-center gap-2">
+    {dailyStatus?.tree?.key && (
+      <img
+        src={`/tree/${dailyStatus.tree.key}.png`}
+        alt={`ağaç ${dailyStatus.tree.key}`}
+  style={{ width: 44, height: 44 }}
+  className="object-contain"
+      />
+    )}
     <StatusBadge
       text={`Seri: ${dailyStatus.streak_current} gün`}
-      color="emerald"   // mor yerine tema uyumlu yeşil
-      size="md"         // bir tık daha büyük
-      className="!px-3 !py-1.5" // pedingi de büyüt
+      color="emerald"
+      size="sm"
     />
     {(dailyStatus?.today_bonus_per_correct ?? 0) > 0 && (
       <StatusBadge
         text={`Bugün +${dailyStatus.today_bonus_per_correct}/doğru`}
         color="orange"
         size="sm"
-        className="ml-2"
       />
     )}
   </div>
 )}
+
+
 
 
 

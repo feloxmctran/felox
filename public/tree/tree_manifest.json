@@ -1,0 +1,14 @@
+{
+  "basePath": "/tree",
+  "thresholds": [0, 3, 7, 14, 30, 60, 100, 365],
+  "images": {
+    "A1": "A1.png",
+    "A2": "A2.png",
+    "A3": "A3.png",
+    "A4": "A4.png",
+    "A5": "A5.png",
+    "A6": "A6.png",
+    "A7": "A7.png",
+    "A8": "A8.png"
+  }
+}
